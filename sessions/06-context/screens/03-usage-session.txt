@@ -1,0 +1,16 @@
+  Settings  Status   Config   Usage   Stats
+
+  Session
+
+  Total cost:            $0.3909
+  Total duration (API):  35s
+  Total duration (wall): 1m 39s
+  Total code changes:    0 lines added, 0 lines removed
+  Usage by model:
+      claude-haiku-4-5:  1.8k input, 23 output, 0 cache read,
+  0 cache write ($0.0019)
+         claude-opus-5:  514 input, 3.0k output, 183.1k cache
+  read, 22.0k cache write ($0.3890)
+  Prompt cache (main):   4 requests · 87% of input tokens from
+  cache · no misses · warm (1h TTL, last activity 46s ago)
+

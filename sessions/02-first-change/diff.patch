@@ -1,0 +1,121 @@
+diff --git a/ledger.py b/ledger.py
+index 2d316ee..ae61a0d 100644
+--- a/ledger.py
++++ b/ledger.py
+@@ -35,3 +35,8 @@ def totals(entries: list[Entry]) -> tuple[Decimal, Decimal]:
+         (-e.amount for e in entries if e.amount < 0), Decimal(0)
+     )
+     return money_in, money_out
++
++
++def in_month(entries: list[Entry], year: int, month: int) -> list[Entry]:
++    """Return only the entries dated in the given month."""
++    return [e for e in entries if e.day.year == year and e.day.month == month]
+diff --git a/tally.py b/tally.py
+index 026652a..a9d93d0 100644
+--- a/tally.py
++++ b/tally.py
+@@ -3,14 +3,36 @@
+ import argparse
+ from pathlib import Path
+ 
+-from ledger import read_entries, totals
++from ledger import in_month, read_entries, totals
++
++
++def month_arg(value: str) -> tuple[int, int]:
++    """Parse YYYY-MM into (year, month)."""
++    try:
++        year, month = value.split("-")
++        if len(year) != 4 or len(month) != 2:
++            raise ValueError
++        year_n, month_n = int(year), int(month)
++        if not 1 <= month_n <= 12:
++            raise ValueError
++    except ValueError:
++        raise argparse.ArgumentTypeError(
++            f"invalid month {value!r}, expected YYYY-MM"
++        ) from None
++    return year_n, month_n
+ 
+ 
+ def main(argv: list[str] | None = None) -> int:
+     parser = argparse.ArgumentParser(prog="tally")
+     parser.add_argument("csv", type=Path)
++    parser.add_argument(
++        "--month", type=month_arg, help="only count entries from YYYY-MM"
++    )
+     args = parser.parse_args(argv)
+-    money_in, money_out = totals(read_entries(args.csv))
++    entries = read_entries(args.csv)
++    if args.month:
++        entries = in_month(entries, *args.month)
++    money_in, money_out = totals(entries)
+     print(f"in   {money_in:>10}")
+     print(f"out  {money_out:>10}")
+     print(f"net  {money_in - money_out:>10}")
+diff --git a/test_ledger.py b/test_ledger.py
+index 213b5e7..5089377 100644
+--- a/test_ledger.py
++++ b/test_ledger.py
+@@ -1,12 +1,17 @@
+ from decimal import Decimal
+ from pathlib import Path
+ 
+-from ledger import read_entries, totals
++import pytest
++
++from ledger import in_month, read_entries, totals
++from tally import main
+ 
+ CSV = """date,description,amount
+ 2026-08-01,Salary,3200.00
+ 2026-08-02,Rent,-1450.00
+ 2026-08-03,Corner Market,-82.40
++2026-09-01,Salary,3100.00
++2026-09-04,Corner Market,-58.20
+ """
+ 
+ 
+@@ -14,5 +19,39 @@ def test_totals(tmp_path: Path) -> None:
+     path = tmp_path / "bank.csv"
+     path.write_text(CSV, encoding="utf-8")
+     money_in, money_out = totals(read_entries(path))
+-    assert money_in == Decimal("3200.00")
+-    assert money_out == Decimal("1532.40")
++    assert money_in == Decimal("6300.00")
++    assert money_out == Decimal("1590.60")
++
++
++def test_in_month(tmp_path: Path) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(CSV, encoding="utf-8")
++    entries = in_month(read_entries(path), 2026, 9)
++    assert [e.description for e in entries] == ["Salary", "Corner Market"]
++    assert totals(entries) == (Decimal("3100.00"), Decimal("58.20"))
++
++
++def test_in_month_ignores_same_month_other_year(tmp_path: Path) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(CSV + "2025-08-15,Old,-10.00\n", encoding="utf-8")
++    entries = in_month(read_entries(path), 2026, 8)
++    assert len(entries) == 3
++
++
++def test_cli_month(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(CSV, encoding="utf-8")
++    assert main([str(path), "--month", "2026-08"]) == 0
++    out = capsys.readouterr().out.split("\n")
++    assert out[0].split() == ["in", "3200.00"]
++    assert out[1].split() == ["out", "1532.40"]
++    assert out[2].split() == ["net", "1667.60"]
++
++
++@pytest.mark.parametrize("bad", ["2026-13", "2026-8", "Aug", "2026/08", "2026-00"])
++def test_cli_month_rejects_bad_value(tmp_path: Path, bad: str) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(CSV, encoding="utf-8")
++    with pytest.raises(SystemExit) as exc:
++        main([str(path), "--month", bad])
++    assert exc.value.code == 2

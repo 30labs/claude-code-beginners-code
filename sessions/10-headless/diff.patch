@@ -1,0 +1,64 @@
+diff --git a/tally.py b/tally.py
+index 050eb3a..53d94aa 100644
+--- a/tally.py
++++ b/tally.py
+@@ -136,9 +136,9 @@ def main(argv: list[str] | None = None) -> int:
+     if args.category is not None:
+         entries = in_category(entries, args.rules, args.category)
+     money_in, money_out = totals(entries)
+-    print(f"in   {money_in:>10}")
+-    print(f"out  {money_out:>10}")
+-    print(f"net  {money_in - money_out:>10}")
++    print(f"in   {money_in:>10.2f}")
++    print(f"out  {money_out:>10.2f}")
++    print(f"net  {money_in - money_out:>10.2f}")
+     if args.rules is not None:
+         print()
+         for category, spent in by_category(entries, args.rules).items():
+diff --git a/test_ledger.py b/test_ledger.py
+index 0578fe1..3e818f1 100644
+--- a/test_ledger.py
++++ b/test_ledger.py
+@@ -110,11 +110,23 @@ def test_cli_since_with_month(
+     path.write_text(CSV, encoding="utf-8")
+     assert main([str(path), "--month", "2026-08", "--since", "2026-08-02"]) == 0
+     out = capsys.readouterr().out.split("\n")
+-    assert out[0].split() == ["in", "0"]
++    assert out[0].split() == ["in", "0.00"]
+     assert out[1].split() == ["out", "1532.40"]
+     assert out[2].split() == ["net", "-1532.40"]
+ 
+ 
++def test_cli_empty_month_shows_two_decimal_places(
++    tmp_path: Path, capsys: pytest.CaptureFixture[str]
++) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(CSV, encoding="utf-8")
++    assert main([str(path), "--month", "2026-07"]) == 0
++    out = capsys.readouterr().out.split("\n")
++    assert out[0] == "in         0.00"
++    assert out[1] == "out        0.00"
++    assert out[2] == "net        0.00"
++
++
+ @pytest.mark.parametrize(
+     "bad",
+     ["2026-13-01", "2026-02-30", "2026-9-1", "01/09/2026", "20260901", "2026-W36-1"],
+@@ -365,7 +377,7 @@ def test_cli_category(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
+     assert main([str(path), "--rules", str(rules), "--category", "groceries"]) == 0
+     lines = capsys.readouterr().out.splitlines()
+     assert [line.split() for line in lines[:3]] == [
+-        ["in", "0"],
++        ["in", "0.00"],
+         ["out", "140.60"],
+         ["net", "-140.60"],
+     ]
+@@ -402,7 +414,7 @@ def test_cli_category_uncategorised(
+     lines = capsys.readouterr().out.splitlines()
+     assert [line.split() for line in lines] == [
+         ["in", "6300.00"],
+-        ["out", "0"],
++        ["out", "0.00"],
+         ["net", "6300.00"],
+         [],
+     ]

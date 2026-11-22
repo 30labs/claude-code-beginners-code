@@ -1,0 +1,242 @@
+ ▐▛███▛█   Claude Code v2.1.278
+▝▜██████▀  Opus 5 (1M context) · Claude Max
+  ▝▝ ▝▝    /tmp/tally
+
+
+❯ Add a --month option, used like --month 2026-08, that only
+  counts entries from that month. Add tests for it.
+
+● Bash(git ls-files && cat $(git ls-files | grep -v -E
+      '\.(lock|png)$') | head -400)
+  ⎿  .gitignore
+     bank.csv
+     ledger.py
+     … +104 lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+● Bash(cat >> ledger.py <<'EOF'…)
+  ⎿  .........
+                        [100%]
+     9 passed in 0.02s
+     … +3 lines (ctrl+o to expand)
+  ⎿  Updated ledger.py (+5 -0)
+      35          (-e.amount for e in entries if e.amount
+           < 0), Decimal(0)
+      36      )
+      37      return money_in, money_out
+      38 +
+      39 +
+      40 +def in_month(entries: list[Entry], year: int, m
+         +onth: int) -> list[Entry]:
+      41 +    """Return only the entries dated in the giv
+         +en month."""
+      42 +    return [e for e in entries if e.day.year ==
+         + year and e.day.month == month]
+  ⎿  Updated tally.py (+24 -2)
+       3  import argparse
+       4  from pathlib import Path
+       5
+       6 -from ledger import read_entries, totals
+       6 +from ledger import in_month, read_entries, tota
+         +ls
+       7 +
+       8 +
+       9 +def month_arg(value: str) -> tuple[int, int]:
+      10 +    """Parse YYYY-MM into (year, month)."""
+      11 +    try:
+      12 +        year, month = value.split("-")
+      13 +        if len(year) != 4 or len(month) != 2:
+      14 +            raise ValueError
+      15 +        year_n, month_n = int(year), int(month)
+      16 +        if not 1 <= month_n <= 12:
+      17 +            raise ValueError
+      18 +    except ValueError:
+      19 +        raise argparse.ArgumentTypeError(
+      20 +            f"invalid month {value!r}, expected
+         + YYYY-MM"
+      21 +        ) from None
+      22 +    return year_n, month_n
+      23
+      24
+      25  def main(argv: list[str] | None = None) -> int:
+      26      parser = argparse.ArgumentParser(prog="tall
+          y")
+      27      parser.add_argument("csv", type=Path)
+      28 +    parser.add_argument(
+      29 +        "--month", type=month_arg, help="only c
+         +ount entries from YYYY-MM"
+      30 +    )
+      31      args = parser.parse_args(argv)
+      13 -    money_in, money_out = totals(read_entries(a
+         -rgs.csv))
+      32 +    entries = read_entries(args.csv)
+      33 +    if args.month:
+      34 +        entries = in_month(entries, *args.month
+         +)
+      35 +    money_in, money_out = totals(entries)
+      36      print(f"in   {money_in:>10}")
+      37      print(f"out  {money_out:>10}")
+      38      print(f"net  {money_in - money_out:>10}")
+  ⎿  Updated test_ledger.py (+42 -3)
+       1  from decimal import Decimal
+       2  from pathlib import Path
+       3
+       4 -from ledger import read_entries, totals
+       4 +import pytest
+       5 +
+       6 +from ledger import in_month, read_entries, tota
+         +ls
+       7 +from tally import main
+       8
+       9  CSV = """date,description,amount
+      10  2026-08-01,Salary,3200.00
+      11  2026-08-02,Rent,-1450.00
+      12  2026-08-03,Corner Market,-82.40
+      13 +2026-09-01,Salary,3100.00
+      14 +2026-09-04,Corner Market,-58.20
+      15  """
+      16
+      17
+     ...
+      19      path = tmp_path / "bank.csv"
+      20      path.write_text(CSV, encoding="utf-8")
+      21      money_in, money_out = totals(read_entries(p
+          ath))
+      17 -    assert money_in == Decimal("3200.00")
+      18 -    assert money_out == Decimal("1532.40")
+      22 +    assert money_in == Decimal("6300.00")
+      23 +    assert money_out == Decimal("1590.60")
+      24 +
+      25 +
+      26 +def test_in_month(tmp_path: Path) -> None:
+      27 +    path = tmp_path / "bank.csv"
+      28 +    path.write_text(CSV, encoding="utf-8")
+      29 +    entries = in_month(read_entries(path), 2026
+         +, 9)
+      30 +    assert [e.description for e in entries] ==
+         +["Salary", "Corner Market"]
+      31 +    assert totals(entries) == (Decimal("3100.00
+         +"), Decimal("58.20"))
+      32 +
+      33 +
+      34 +def test_in_month_ignores_same_month_other_year
+         +(tmp_path: Path) -> None:
+      35 +    path = tmp_path / "bank.csv"
+      36 +    path.write_text(CSV + "2025-08-15,Old,-10.0
+         +0\n", encoding="utf-8")
+      37 +    entries = in_month(read_entries(path), 2026
+         +, 8)
+      38 +    assert len(entries) == 3
+     … 19 more lines (ctrl+o to expand)
+  ⎿  (what this command changed; a convenience view, not a
+     review or audit of the command)
+  ⎿  Allowed by auto mode classifier
+
+● I added --month. Running python tally.py bank.csv --month
+  2026-08 now counts only August entries. All 9 tests pass, and
+  on the real bank.csv it prints in 3218.90, out 1803.90, net
+  1415.00, which matches the August rows added up by hand.
+
+  - ledger.py: a new in_month(entries, year, month) function
+    keeps only the entries from that month.
+  - tally.py: the new --month option takes YYYY-MM and filters
+    the entries before they're totalled. A value that isn't in
+    that form, like 2026-13 or 2026-8, gets a normal usage
+    error. Without --month, it counts everything as before.
+  - test_ledger.py:
+    - I added two September rows to the shared test CSV and
+      updated the existing test_totals numbers to match.
+    - New tests check that the filter keeps the right month,
+      that the same month in a different year isn't counted, and
+      what the command prints with --month 2026-08.
+    - A parametrized test checks that five bad values are
+      rejected.
+
+✻ Cooked for 23s · done 10:07 AM
+
+❯ /diff
+
+────────────────────────────────────────────────────────────────
+  Uncommitted changes (git diff HEAD)
+
+  3 files changed +71 -5
+
+  tally.py
+  ────────────────────────────────────────────────────────────
+    3  import argparse
+    4  from pathlib import Path
+    5
+    6 -from ledger import read_entries, totals
+    6 +from ledger import in_month, read_entries, totals
+     … 19 more lines (ctrl+o to expand)
+  ⎿  (what this command changed; a convenience view, not a
+     review or audit of the command)
+  ⎿  Allowed by auto mode classifier
+
+● I added --month. Running python tally.py bank.csv --month
+  2026-08 now counts only August entries. All 9 tests pass, and
+  on the real bank.csv it prints in 3218.90, out 1803.90, net
+  1415.00, which matches the August rows added up by hand.
+
+  - ledger.py: a new in_month(entries, year, month) function
+    keeps only the entries from that month.
+  - tally.py: the new --month option takes YYYY-MM and filters
+    the entries before they're totalled. A value that isn't in
+    that form, like 2026-13 or 2026-8, gets a normal usage
+    error. Without --month, it counts everything as before.
+  - test_ledger.py:
+    - I added two September rows to the shared test CSV and
+      updated the existing test_totals numbers to match.
+    - New tests check that the filter keeps the right month,
+      that the same month in a different year isn't counted, and
+      what the command prints with --month 2026-08.
+    - A parametrized test checks that five bad values are
+      rejected.
+
+✻ Cooked for 23s · done 10:07 AM
+
+❯ /diff
+  ⎿  Diff dialog dismissed
+
+❯ Commit this with a short message.
+
+● Bash(git add ledger.py tally.py test_ledger.py && git commit
+      -q -F - <<'EOF'
+      Add --month option to only count entries from one month…)
+  ⎿  f7d0947 Add --month option to only count entries from
+     one month
+  ⎿  Allowed by auto mode classifier
+
+● I committed the change on master as f7d0947 with the message
+  "Add --month option to only count entries from one month".
+  Nothing is left uncommitted.
+
+✻ Cogitated for 5s · done 10:09 AM
+
+────────────────────────────────────────────────────────────────
+❯ /exit
+────────────────────────────────────────────────────────────────
+  /exit                    Exit the CLI
+  /context                 Visualize current context usage as
+                           a colored grid
+  /usage-credits           Configure usage credits or request
+                           them from your admin when you hit …
+  /doctor                  Health-check the user's Claude Code
+                           setup and fix issues: diagnose ins…
+  /artifact-capabilities   Runtime capabilities a published
+                           Artifact page can be granted — beh…
+  /verify                  Verify that a code change actually
+                           does what it's supposed to by exer…
+  /agents                  (removed) Ask Claude to
+                           create/manage subagents, or edit .…
+  /memory                  Edit CLAUDE.md files and memory
+                           settings
+  /passes                  Share a free week of Claude Code
+                           with friends and earn usage credits
+  /autocompact             Set how full the context gets
+                           before auto-summarizing
+
+
+Resume this session with:
+claude --resume 68be7f8a-a2f3-4d36-9875-b4dd00db186c
+reader@host:/tmp/tally$

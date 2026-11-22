@@ -1,0 +1,30 @@
+  Manage MCP servers
+  1 server
+
+    Project MCPs (/tmp/tally/.mcp.json)
+  ❯ tally · ✔ connected · 1 tool
+
+  https://code.claude.com/docs/en/mcp for help
+ ↑/↓ to navigate · Enter to confirm · Esc to cancel
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

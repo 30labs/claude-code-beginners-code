@@ -1,0 +1,65 @@
+ ▐▛███▛█   Claude Code v2.1.278
+▝▜██████▀  Opus 5 (1M context) · Claude Max
+  ▝▝ ▝▝    /tmp/tally
+
+▎ Auto mode is now Claude Code's default permission mode.
+▎ Auto mode lets Claude handle permission prompts automatically.
+▎ Claude checks each tool call for risky actions and prompt
+▎ injection before executing, runs the ones it assesses as
+▎ lower-risk, and blocks the rest.
+▎ https://code.claude.com/docs/en/permission-modes
+
+❯ What does this project do, and how do I run its tests?
+
+● Bash(git ls-files | head -100 && cat README* 2>/dev/null |
+      head -80)
+  ⎿  .gitignore
+     bank.csv
+     ledger.py
+     … +5 lines (ctrl+o to expand)
+
+  Read 1 file (ctrl+o to expand)
+
+● Let me confirm the tests actually run.
+
+● Bash(uv run pytest -q 2>&1 | tail -15; uv run python tally.py
+      bank.csv 2>&1)
+  ⎿  .
+                        [100%]
+     1 passed in 0.01s
+     … +3 lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+● Tally is a small Python command-line tool (3.12 or newer, no
+  runtime dependencies) that sums up a bank CSV export.
+
+  - ledger.py reads a CSV with date,description,amount columns
+    into Entry records. It uses Decimal so money amounts stay
+    exact. totals() returns money in (positive amounts) and
+    money out (negative amounts, shown as positive numbers).
+  - tally.py is the command-line entry point. It takes a CSV
+    path and prints the in, out and net totals.
+  - bank.csv is a sample export with 11 transactions.
+
+  To run it on the sample:
+  uv run python tally.py bank.csv
+  in      6418.90
+  out     3312.10
+  net     3106.80
+
+  Tests: pytest is set up as a dev dependency and managed with
+  uv (there's a uv.lock). To run the tests:
+  uv run pytest
+  uv creates the .venv and installs pytest the first time you
+  run it. I ran it just now and it passed: 1 passed. There's
+  only one test, test_ledger.py::test_totals, which covers
+  reading a small CSV and checking the totals. Nothing tests the
+  command-line output or malformed input.
+
+✻ Cogitated for 15s · done 10:01 AM
+
+────────────────────────────────────────────────────────────────
+❯ add tests for the CLI output
+────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents      /rc
+

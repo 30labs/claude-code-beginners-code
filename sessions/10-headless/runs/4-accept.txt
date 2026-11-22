@@ -1,0 +1,15 @@
+$ claude -p When\ a\ filter\ leaves\ no\ income\,\ tally\ prints\ \'in\ 0\'\ instead\ of\ \'in\ 0.00\'.\ Fix\ it\ with\ a\ test. --permission-mode acceptEdits
+Fixed. The `in`, `out` and `net` lines now always show two decimal places, so a filter that leaves nothing prints `0.00`. Format, lint and all 76 tests pass.
+
+**Cause:** `totals` starts its sums at `Decimal(0)`, which has no decimal places. When no entries match, that start value is what gets printed, so you saw `0`. The same thing happened to `out` when there were no expenses, and to `net` when both were zero.
+
+**Fix** (`tally.py`): the three totals lines now use `:>10.2f` instead of `:>10`. I left `totals` itself alone, since the project's convention is to start sums at `Decimal(0)`.
+
+**Tests** (`test_ledger.py`):
+- New test `test_cli_empty_month_shows_two_decimal_places` runs `--month 2026-07`, which has no entries, and checks the exact lines `in 0.00`, `out 0.00` and `net 0.00`. It failed before the fix and passes now.
+- Three existing tests were asserting the bug (`"0"`), so I changed them to expect `"0.00"`: `test_cli_since_with_month`, `test_cli_category` and `test_cli_category_uncategorised`.
+
+**Side effects to know about:**
+- The totals lines now always show exactly two decimals. An amount like `12.5` in the CSV would total as `12.50` instead of `12.5`. A total with more than two decimals would be rounded, though bank exports normally use two.
+- The category and `--top` lines still print amounts as they appear in the CSV. They can't show a bare `0`, because they only list real expenses.
+exit=0

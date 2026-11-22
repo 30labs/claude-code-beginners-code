@@ -1,0 +1,577 @@
+ ▐▛███▛█   Claude Code v2.1.278
+▝▜██████▀  Opus 5 (1M context) · Claude Max
+  ▝▝ ▝▝    /tmp/tally
+
+
+❯ /skills
+  ⎿  No changes
+
+❯ /new-option --since YYYY-MM-DD only counts entries on or
+after that date
+
+  Read 1 file (ctrl+o to expand)
+
+● Tests first. I'll add a pure since function to ledger.py plus
+  CLI tests.
+
+● Bash(python3 - <<'EOF'
+      p='test_ledger.py'…)
+  ⎿  E   ImportError: cannot import name 'since' from 'ledg
+     er' (/tmp/tally/ledger.py)
+     =========================== short test summary info ==
+     … +5 lines (ctrl+o to expand)
+  ⎿  Updated test_ledger.py (+47 -0)
+      1 +from datetime import date
+      2  from decimal import Decimal
+      3  from pathlib import Path
+      4
+     ...
+      10      largest_expenses,
+      11      read_entries,
+      12      read_rules,
+      13 +    since,
+      14      totals,
+      15  )
+      16  from tally import main
+     ...
+       78      assert exc.value.code == 2
+       79
+       80
+       81 +def test_since_includes_the_day_itself(tmp_pat
+          +h: Path) -> None:
+       82 +    path = tmp_path / "bank.csv"
+       83 +    path.write_text(CSV, encoding="utf-8")
+       84 +    entries = since(read_entries(path), date(2
+          +026, 8, 3))
+       85 +    assert [e.day for e in entries] == [
+       86 +        date(2026, 8, 3),
+       87 +        date(2026, 9, 1),
+       88 +        date(2026, 9, 4),
+       89 +    ]
+       90 +
+       91 +
+       92 +def test_cli_since(tmp_path: Path, capsys: pyt
+          +est.CaptureFixture[str]) -> None:
+       93 +    path = tmp_path / "bank.csv"
+       94 +    path.write_text(CSV, encoding="utf-8")
+       95 +    assert main([str(path), "--since", "2026-0
+          +8-03"]) == 0
+       96 +    out = capsys.readouterr().out.split("\n")
+       97 +    assert out[0].split() == ["in", "3100.00"]
+       98 +    assert out[1].split() == ["out", "140.60"]
+       99 +    assert out[2].split() == ["net", "2959.40"
+          +]
+      100 +
+      101 +
+      102 +def test_cli_since_with_month(
+      103 +    tmp_path: Path, capsys: pytest.CaptureFixt
+          +ure[str]
+      104 +) -> None:
+      105 +    path = tmp_path / "bank.csv"
+      106 +    path.write_text(CSV, encoding="utf-8")
+     … 22 more lines (ctrl+o to expand)
+  ⎿  (what this command changed; a convenience view, not a
+     review or audit of the command)
+  ⎿  Allowed by auto mode classifier
+
+● The whole test file fails to import because since doesn't
+  exist yet. Next I'll add the ledger function, then re-run so
+  the CLI tests fail one by one:
+
+● Bash(python3 - <<'EOF'
+      p='ledger.py'…)
+  ⎿              self._print_message(message, _sys.stderr)
+     >       _sys.exit(status)
+     E       SystemExit: 2
+     … +16 lines (ctrl+o to expand)
+  ⎿  Updated ledger.py (+5 -0)
+      68      return [e for e in entries if e.day.year ==
+           year and e.day.month == month]
+      69
+      70
+      71 +def since(entries: list[Entry], day: date) -> l
+         +ist[Entry]:
+      72 +    """Return only the entries dated on or afte
+         +r the given day."""
+      73 +    return [e for e in entries if e.day >= day]
+      74 +
+      75 +
+      76  def largest_expenses(entries: list[Entry], n: i
+          nt) -> list[Entry]:
+      77      """Return the n biggest expenses, biggest f
+          irst; ties keep file order."""
+      78      expenses = [e for e in entries if e.amount
+          < 0]
+  ⎿  Allowed by auto mode classifier
+
+● The two CLI tests fail as expected. But the bad-value tests
+  pass already, because argparse exits with 2 on the unknown
+  flag too. That makes them useless. I'll make them also check
+  the error message:
+
+● Bash(python3 - <<'EOF'
+      p='test_ledger.py'…)
+  ⎿  FAILED test_ledger.py::test_cli_since - SystemExit: 2
+     FAILED test_ledger.py::test_cli_since_with_month - Sys
+     temExit: 2
+     … +13 lines (ctrl+o to expand)
+  ⎿  Updated test_ledger.py (+4 -1)
+      115      "bad",
+      116      ["2026-13-01", "2026-02-30", "2026-9-1", "
+           01/09/2026", "20260901", "2026-W36-1"],
+      117  )
+      118 -def test_cli_since_rejects_bad_value(tmp_path:
+          - Path, bad: str) -> None:
+      118 +def test_cli_since_rejects_bad_value(
+      119 +    tmp_path: Path, capsys: pytest.CaptureFixt
+          +ure[str], bad: str
+      120 +) -> None:
+      121      path = tmp_path / "bank.csv"
+      122      path.write_text(CSV, encoding="utf-8")
+      123      with pytest.raises(SystemExit) as exc:
+      124          main([str(path), "--since", bad])
+      125      assert exc.value.code == 2
+      126 +    assert f"invalid date {bad!r}, expected YY
+          +YY-MM-DD" in capsys.readouterr().err
+      127
+      128
+      129  def test_largest_expenses(tmp_path: Path) -> N
+           one:
+  ⎿  Allowed by auto mode classifier
+
+● All 8 new CLI tests now fail. Now the CLI side:
+
+● Bash(python3 - <<'EOF'
+      p='tally.py'…)
+  ⎿  5 files left unchanged
+     All checks passed!
+     ......................................................
+     … +2 lines (ctrl+o to expand)
+  ⎿  Updated tally.py (+24 -0)
+      2
+      3  import argparse
+      4  import tomllib
+      5 +from datetime import date
+      6  from pathlib import Path
+      7
+      8  from ledger import (
+     ...
+      13      largest_expenses,
+      14      read_entries,
+      15      read_rules,
+      16 +    since,
+      17      totals,
+      18  )
+      19
+     ...
+      34      return year_n, month_n
+      35
+      36
+      37 +def date_arg(value: str) -> date:
+      38 +    """Parse YYYY-MM-DD into a date."""
+      39 +    try:
+      40 +        day = date.fromisoformat(value)
+      41 +        # fromisoformat also takes forms like 2
+         +0260901 and 2026-W36-1
+      42 +        if day.isoformat() != value:
+      43 +            raise ValueError
+      44 +    except ValueError:
+      45 +        raise argparse.ArgumentTypeError(
+      46 +            f"invalid date {value!r}, expected
+         +YYYY-MM-DD"
+      47 +        ) from None
+      48 +    return day
+      49 +
+      50 +
+      51  def count_arg(value: str) -> int:
+      52      """Parse a positive integer."""
+      53      try:
+     ...
+      83      parser.add_argument(
+      84          "--month", type=month_arg, help="only c
+          ount entries from YYYY-MM"
+      85      )
+      86 +    parser.add_argument(
+      87 +        "--since",
+      88 +        type=date_arg,
+     … 14 more lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+● Bash(uv run python tally.py bank.csv; echo; uv run python
+      tally.py bank.csv --since 2026-08-20 --top 3; echo; uv run
+      python tally.py bank.csv --since 2026-8-20; echo…)
+  ⎿  in      6418.90
+     out     3312.10
+     net     3106.80
+     … +16 lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+● I've added --since YYYY-MM-DD, which keeps entries dated on or
+  after that day. Format, lint and all 57 tests pass, and
+  nothing is committed.
+
+  Changes:
+  - ledger.py: a new function since(entries, day) keeps entries
+    whose date is on or after day.
+  - tally.py: a new date_arg check follows the same pattern as
+    the other options, so a bad value exits with code 2. It
+    accepts only the exact YYYY-MM-DD form. Python's
+    date.fromisoformat would also take 20260901 or 2026-W36-1,
+    so those are now rejected. --since can be combined with
+    --month, --top and --rules.
+  - test_ledger.py: 9 new tests:
+    - one for since itself, which checks that the given day is
+      included;
+    - the CLI on its own;
+    - the CLI with --month;
+    - six bad values: 2026-13-01, 2026-02-30, 2026-9-1,
+      01/09/2026, 20260901, 2026-W36-1.
+
+  Test-first run: before since existed, the test file failed to
+  import. After adding the ledger function, the two CLI tests
+  failed. The six bad-value tests passed anyway, because
+  argparse also exits with code 2 on an unknown flag, so they
+  weren't testing anything. I made them also check for the
+  invalid date '…', expected YYYY-MM-DD error message. After
+  that, all 8 new CLI tests failed as expected before the CLI
+  change.
+
+  On bank.csv:
+  $ uv run python tally.py bank.csv --since 2026-08-20 --top 3
+  in      3218.90
+  out     1582.25
+  net     1636.65
+
+  2026-09-02  Rent                    1450.00
+  2026-08-27  Corner Market             74.05
+  2026-09-04  Corner Market             58.20
+
+  $ uv run python tally.py bank.csv --since 2026-8-20
+  tally: error: argument --since: invalid date '2026-8-20',
+  expected YYYY-MM-DD   (exit 2)
+
+  When a filter leaves no income, the in line prints 0 rather
+  than 0.00. That was already true with --month, and the
+  with-month test checks for it.
+
+✻ Cogitated for 44s · done 10:39 AM
+
+❯ Commit this.
+
+● Bash(git branch -a && git status --short)
+  ⎿  * master
+      M ledger.py
+      M tally.py
+      M test_ledger.py
+
+● master is the only branch, so it's effectively the default.
+  I'll commit on a new feature branch.
+
+● Bash(git switch -c add-since-option && git add ledger.py
+      tally.py test_ledger.py && git commit -q -F - <<'EOF'
+      Add --since option to count only entries on or after a…)
+  ⎿  Switched to a new branch 'add-since-option'
+     42bca8a Add --since option to count only entries on or
+      after a date
+     29feb94 start
+  ⎿  Allowed by auto mode classifier
+
+● The change is committed as 42bca8a ("Add --since option to
+  count only entries on or after a date"), and the working tree
+  is clean.
+
+  master was the only branch, so I committed on a new branch,
+  add-since-option, rather than on master itself. If you'd
+  rather have it on master, run git switch master && git merge
+  add-since-option. Nothing was pushed.
+
+  CLAUDE.md doesn't mention since or --since yet. Its
+  Architecture section lists the ledger functions and the
+  argument checks, and its Commands section has example runs.
+  Want me to add them?
+
+✻ Worked for 10s · done 10:45 AM
+
+❯ Add a --category NAME option that only counts entries in that
+  category. It needs --rules.
+
+● Skill(new-option)
+  ⎿  Successfully loaded skill
+
+● Bash(cat rules.toml && cat bank.csv && git status --short &&
+      git branch --show-current)
+  ⎿  Market = "groceries"
+     Rent = "housing"
+     Metro = "transport"
+     … +14 lines (ctrl+o to expand)
+
+● I'll continue building on the clean add-since-option branch,
+  adding a --category NAME filter that matches entries
+  (including income) against categorization rules, with
+  parser.error used for validation cases like missing --rules or
+  unmatched category names. Starting with tests now.
+
+● Bash(python3 - <<'EOF'
+      p='test_ledger.py'…)
+  ⎿  ERROR test_ledger.py
+     !!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during colle
+     ction !!!!!!!!!!!!!!!!!!!!
+     1 error in 0.07s
+  ⎿  Updated test_ledger.py (+106 -0)
+       6
+       7  from ledger import (
+       8      by_category,
+       9 +    in_category,
+      10      in_month,
+      11      largest_expenses,
+      12      read_entries,
+     ...
+      327      ]
+      328
+      329
+      330 +def test_in_category_keeps_income_and_expenses
+          +(tmp_path: Path) -> None:
+      331 +    path = tmp_path / "bank.csv"
+      332 +    path.write_text(CSV + "2026-08-20,Refund M
+          +arket,5.00\n", encoding="utf-8")
+      333 +    rules = {"Market": "groceries", "Rent": "h
+          +ousing"}
+      334 +    entries = in_category(read_entries(path),
+          +rules, "groceries")
+      335 +    assert [e.amount for e in entries] == [
+      336 +        Decimal("-82.40"),
+      337 +        Decimal("-58.20"),
+      338 +        Decimal("5.00"),
+      339 +    ]
+      340 +
+      341 +
+      342 +def test_in_category_uncategorised(tmp_path: P
+          +ath) -> None:
+      343 +    path = tmp_path / "bank.csv"
+      344 +    path.write_text(CSV, encoding="utf-8")
+      345 +    entries = in_category(read_entries(path),
+          +{"Rent": "housing"}, "uncategorised")
+      346 +    assert [e.description for e in entries] ==
+          + [
+      347 +        "Salary",
+      348 +        "Corner Market",
+      349 +        "Salary",
+      350 +        "Corner Market",
+      351 +    ]
+      352 +
+      353 +
+      354 +def test_cli_category(tmp_path: Path, capsys:
+          +pytest.CaptureFixture[str]) -> None:
+      355 +    path = tmp_path / "bank.csv"
+      356 +    path.write_text(CSV, encoding="utf-8")
+      357 +    rules = tmp_path / "rules.toml"
+      358 +    rules.write_text(RULES, encoding="utf-8")
+      359 +    assert main([str(path), "--rules", str(rul
+          +es), "--category", "groceries"]) == 0
+     … 78 more lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+● The file fails to import because in_category doesn't exist
+  yet. Next I'll add the ledger function and re-run so the CLI
+  tests fail one by one:
+
+● Bash(python3 - <<'EOF'
+      p='ledger.py'…)
+  ⎿  FAILED test_ledger.py::test_cli_category - SystemExit:
+      2
+     FAILED test_ledger.py::test_cli_category_with_month -
+     … +14 lines (ctrl+o to expand)
+  ⎿  Updated ledger.py (+7 -0)
+      100      return UNCATEGORISED
+      101
+      102
+      103 +def in_category(
+      104 +    entries: list[Entry], rules: dict[str, str
+          +], category: str
+      105 +) -> list[Entry]:
+      106 +    """Return only the entries whose descripti
+          +on falls in the given category."""
+      107 +    return [e for e in entries if categorise(e
+          +.description, rules) == category]
+      108 +
+      109 +
+      110  def by_category(entries: list[Entry], rules: d
+           ict[str, str]) -> dict[str, Decimal]:
+      111      """Return spending per category as positiv
+           e amounts, biggest first."""
+      112      spent: dict[str, Decimal] = {}
+  ⎿  Allowed by auto mode classifier
+
+● The 8 CLI tests fail, and the 2 ledger tests now pass. Now the
+  CLI side:
+
+● Bash(python3 - <<'EOF'
+      p='tally.py'…)
+  ⎿  5 files left unchanged
+     All checks passed!
+     FAILED test_ledger.py::test_cli_category_uncategorised
+     … +2 lines (ctrl+o to expand)
+  ⎿  Updated tally.py (+28 -0)
+       6  from pathlib import Path
+       7
+       8  from ledger import (
+       9 +    UNCATEGORISED,
+      10      CsvError,
+      11      Entry,
+      12      by_category,
+      13 +    in_category,
+      14      in_month,
+      15      largest_expenses,
+      16      read_entries,
+     ...
+      63      return n
+      64
+      65
+      66 +def category_arg(value: str) -> str:
+      67 +    """Parse a category name, which must not be
+         + blank."""
+      68 +    if not value.strip():
+      69 +        raise argparse.ArgumentTypeError(
+      70 +            f"invalid category {value!r}, expec
+         +ted a category name"
+      71 +        )
+      72 +    return value
+      73 +
+      74 +
+      75  def rules_arg(value: str) -> dict[str, str]:
+      76      """Load a rules TOML file mapping descripti
+          on words to categories."""
+      77      try:
+     ...
+      112          metavar="PATH",
+      113          help="also list spending per category,
+            using word rules from a TOML file",
+      114      )
+      115 +    parser.add_argument(
+      116 +        "--category",
+      117 +        type=category_arg,
+      118 +        metavar="NAME",
+      119 +        help="only count entries in this categ
+          +ory (needs --rules)",
+      120 +    )
+      121      args = parser.parse_args(argv)
+      122 +    if args.category is not None:
+      123 +        if args.rules is None:
+      124 +            parser.error("--category needs --r
+          +ules")
+      125 +        known = {*args.rules.values(), UNCATEG
+          +ORISED}
+     … 15 more lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+● Bash(uv run pytest -q -k category_uncategorised 2>&1 | grep -E
+      "^E" | head)
+  ⎿  E       AssertionError: assert [['in', '6300...6300.00
+     '], []] == [['in', '6300...', '6300.00']]
+     E
+     … +2 lines (ctrl+o to expand)
+
+● The code's actually correct—my test was wrong. I'll update the
+  test to expect the blank separator line that --rules always
+  prints before category rows, even when uncategorised has no
+  expenses.
+
+● Bash(python3 - <<'EOF'
+      p='test_ledger.py'…)
+  ⎿  5 files left unchanged
+     All checks passed!
+     67 passed in 0.09s
+  ⎿  Updated test_ledger.py (+1 -0)
+      398          ["in", "6300.00"],
+      399          ["out", "0"],
+      400          ["net", "6300.00"],
+      401 +        [],
+      402      ]
+      403
+      404
+  ⎿  Allowed by auto mode classifier
+
+● Bash(uv run python tally.py bank.csv --rules rules.toml
+      --category groceries --top 3; echo; uv run python tally.py
+      bank.csv --rules rules.toml --category groceries -…)
+  ⎿  in            0
+     out      275.80
+     net     -275.80
+     … +24 lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+● I've added --category NAME, which counts only entries in that
+  category and requires --rules. Format, lint and all 67 tests
+  pass. Nothing is committed, and the changes sit uncommitted on
+  the add-since-option branch.
+
+  Changes:
+  - ledger.py: a new function in_category(entries, rules,
+    category) keeps the entries whose description the rules map
+    to that category.
+  - tally.py:
+    - A new category_arg rejects a blank name with exit code 2,
+      following the same pattern as the other options.
+    - Two checks need --rules to have been read, so a type=
+      function can't do them: --category without --rules, and a
+      name that no rule produces. They use parser.error, which
+      also exits with code 2.
+    - The category filter runs after --month and --since, so
+      --top and the --rules breakdown only show that category.
+  - test_ledger.py: 10 new tests:
+    - two for in_category itself;
+    - the CLI on its own, with --month (and --top), and with
+      uncategorised;
+    - five bad values: empty, blank, unknown name, wrong case,
+      and no --rules.
+
+  Decisions to check:
+  - Income counts too. Any entry the rules put in the category
+    is counted, not only expenses. For example, a Refund Market
+    of +5.00 would add to in for groceries. --category
+    uncategorised therefore shows your salary as income.
+  - Unknown names are an error. Otherwise a typo like grocery
+    would quietly print zeros. The error lists the valid names.
+    Matching is exact, so Groceries is also rejected.
+  - uncategorised is accepted as a name, for entries no rule
+    matches.
+
+  Test-first run: before in_category existed, the test file
+  failed to import. After adding it, all 8 CLI tests failed.
+  Once the CLI change was in, one of them still failed, and the
+  mistake was in the test. With --rules, the output always ends
+  with a blank line before the category rows, even when no rows
+  follow. I fixed the test to expect that line.
+
+  On bank.csv:
+  $ uv run python tally.py bank.csv --rules rules.toml
+  --category groceries --top 3
+  in            0
+  out      275.80
+  net     -275.80
+
+  groceries                275.80
+
+  2026-08-03  Corner Market             82.40
+  2026-08-27  Corner Market             74.05
+  2026-08-09  Corner Market             61.15
+
+  $ uv run python tally.py bank.csv --rules rules.toml
+  --category grocery
+  tally: error: unknown category 'grocery', expected one of:
+  groceries, housing, transport, uncategorised, utilities
+  (exit 2)
+
+  $ uv run python tally.py bank.csv --category groceries
+  tally: error: --category needs --rules   (exit 2)
+
+✻ Crunched for 58s · done 10:46 AM
+
+────────────────────────────────────────────────────────────────
+❯ Commit this.
+────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents      /rc
+
+
+
+

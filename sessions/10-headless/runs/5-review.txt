@@ -1,0 +1,17 @@
+$ git diff | claude -p "Review this diff. List real problems only, most serious first."
+I found two real problems. Neither one fails a test: all 76 pass. I couldn't run a sample CSV because the permission prompts were declined, so the rounding example below is worked out by hand.
+
+1. **`.2f` quietly rounds, so the totals may not add up** (`tally.py:139-141`). `read_entries` accepts any finite `Decimal`, including sub-cent amounts like `0.015`. `format(Decimal, ".2f")` rounds each value on its own using the default half-even rounding, and `net` is rounded from the exact difference. For example, entries `+0.015`, `-0.005`, `-5` would print:
+   ```
+   in         0.02
+   out        5.00
+   net       -4.99
+   ```
+   0.02 − 5.00 = −4.98, but the summary says −4.99. Before this change the output was exact, so this is new. There are two ways to fix it:
+   - quantize `money_in` and `money_out` to cents, then compute `net` from the quantized values; or
+   - reject amounts with more than 2 decimal places in `parse_row`.
+
+2. **The CLI now formats amounts two different ways.** Only the in/out/net lines got `.2f`. The per-category totals (`tally.py:145`) and the `--top` list (`tally.py:149`) still print the raw `Decimal`. A CSV amount of `-5` shows as `5.00` in `out` but as `5` in `--top`, and the column alignment no longer lines up between sections. If the aim is always to show two decimal places, those two lines need the same change, plus tests. As it stands, the new test only covers the totals block.
+
+The test changes look fine otherwise. `2026-07` really has no entries in the fixture. The new test checks exact lines, including the column widths, instead of using `split()`, so it would catch an alignment regression.
+exit=0

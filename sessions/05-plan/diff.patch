@@ -1,0 +1,348 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 153b9e6..ac6f493 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
+ 
+ ## Project
+ 
+-`tally` is a small Python CLI (Python ≥3.12, no runtime dependencies) that summarises a bank CSV export: money in, money out, net, optionally filtered to one month and optionally listing the largest expenses. Managed with `uv`; dev dependencies are pytest and ruff.
++`tally` is a small Python CLI (Python ≥3.12, no runtime dependencies) that summarises a bank CSV export: money in, money out, net, optionally filtered to one month, optionally listing the largest expenses, and optionally grouping spending by category. Managed with `uv`; dev dependencies are pytest and ruff.
+ 
+ ## Before calling a change done
+ 
+@@ -24,6 +24,7 @@ uv run pytest test_ledger.py::test_cli_top      # run a single test
+ uv run pytest -k largest_expenses               # run tests matching a name
+ uv run python tally.py bank.csv                 # run the CLI against the sample data
+ uv run python tally.py bank.csv --month 2026-08 --top 3
++uv run python tally.py bank.csv --rules rules.toml
+ ```
+ 
+ Ruff runs with its default settings (no `[tool.ruff]` section in `pyproject.toml`), so the line length is 88. There is no build step.
+@@ -32,10 +33,10 @@ Ruff runs with its default settings (no `[tool.ruff]` section in `pyproject.toml
+ 
+ Flat layout, two modules, no package:
+ 
+-- `ledger.py` — pure logic. `read_entries` parses the CSV (columns `date,description,amount`; ISO dates; signed amounts where negative = expense) into frozen `Entry` dataclasses. The other functions (`totals`, `in_month`, `largest_expenses`) are pure list transforms over `Entry`s.
+-- `tally.py` — the argparse CLI. `main(argv)` takes an explicit argv list and returns an exit code, which is how tests drive it. Argument validation lives in custom `type=` callables (`month_arg`, `count_arg`) that raise `argparse.ArgumentTypeError`, so bad input exits with code 2.
++- `ledger.py` — pure logic. `read_entries` parses the CSV (columns `date,description,amount`; ISO dates; signed amounts where negative = expense) into frozen `Entry` dataclasses. The other functions (`totals`, `in_month`, `largest_expenses`) are pure list transforms over `Entry`s. `read_rules` loads a flat TOML table of `word = "category"` (stdlib `tomllib`); `by_category` sums expenses per category, matching whole words case-insensitively with the first rule in file order winning, unmatched → `uncategorised`, ordered biggest spend first (ties by name).
++- `tally.py` — the argparse CLI. `main(argv)` takes an explicit argv list and returns an exit code, which is how tests drive it. Argument validation lives in custom `type=` callables (`month_arg`, `count_arg`, `rules_arg`) that raise `argparse.ArgumentTypeError`, so bad input exits with code 2.
+ - `test_ledger.py` — tests for both modules. Each test writes a CSV string to `tmp_path`; CLI tests call `main([...])` and assert on `capsys` output.
+-- `bank.csv` — sample data for manual runs, not used by tests.
++- `bank.csv`, `rules.toml` — sample data for manual runs, not used by tests.
+ 
+ ## Conventions
+ 
+diff --git a/ledger.py b/ledger.py
+index 6a2783e..396cf8b 100644
+--- a/ledger.py
++++ b/ledger.py
+@@ -1,11 +1,14 @@
+ """Read a bank CSV export and add it up."""
+ 
+ import csv
++import tomllib
+ from dataclasses import dataclass
+ from datetime import date
+ from decimal import Decimal
+ from pathlib import Path
+ 
++UNCATEGORISED = "uncategorised"
++
+ 
+ @dataclass(frozen=True)
+ class Entry:
+@@ -42,3 +45,34 @@ def largest_expenses(entries: list[Entry], n: int) -> list[Entry]:
+     """Return the n biggest expenses, biggest first; ties keep file order."""
+     expenses = [e for e in entries if e.amount < 0]
+     return sorted(expenses, key=lambda e: e.amount)[:n]
++
++
++def read_rules(path: Path) -> dict[str, str]:
++    """Read a TOML table mapping a description word to a category."""
++    with path.open("rb") as f:
++        rules = tomllib.load(f)
++    for word, category in rules.items():
++        if not isinstance(category, str):
++            raise TypeError(f"category for {word!r} must be a string")
++        if len(word.split()) != 1:
++            raise ValueError(f"rule {word!r} must be a single word")
++    return rules
++
++
++def categorise(description: str, rules: dict[str, str]) -> str:
++    """Return the category of the first rule whose word is in the description."""
++    words = {w.casefold() for w in description.split()}
++    for word, category in rules.items():
++        if word.casefold() in words:
++            return category
++    return UNCATEGORISED
++
++
++def by_category(entries: list[Entry], rules: dict[str, str]) -> dict[str, Decimal]:
++    """Return spending per category as positive amounts, biggest first."""
++    spent: dict[str, Decimal] = {}
++    for e in entries:
++        if e.amount < 0:
++            category = categorise(e.description, rules)
++            spent[category] = spent.get(category, Decimal(0)) - e.amount
++    return dict(sorted(spent.items(), key=lambda item: (-item[1], item[0])))
+diff --git a/rules.toml b/rules.toml
+new file mode 100644
+index 0000000..a78aac7
+--- /dev/null
++++ b/rules.toml
+@@ -0,0 +1,4 @@
++Market = "groceries"
++Rent = "housing"
++Metro = "transport"
++Electricity = "utilities"
+diff --git a/tally.py b/tally.py
+index c1102ac..261b168 100644
+--- a/tally.py
++++ b/tally.py
+@@ -1,9 +1,17 @@
+ """tally: summarise a bank CSV export."""
+ 
+ import argparse
++import tomllib
+ from pathlib import Path
+ 
+-from ledger import in_month, largest_expenses, read_entries, totals
++from ledger import (
++    by_category,
++    in_month,
++    largest_expenses,
++    read_entries,
++    read_rules,
++    totals,
++)
+ 
+ 
+ def month_arg(value: str) -> tuple[int, int]:
+@@ -35,6 +43,14 @@ def count_arg(value: str) -> int:
+     return n
+ 
+ 
++def rules_arg(value: str) -> dict[str, str]:
++    """Load a rules TOML file mapping description words to categories."""
++    try:
++        return read_rules(Path(value))
++    except (OSError, tomllib.TOMLDecodeError, TypeError, ValueError) as e:
++        raise argparse.ArgumentTypeError(f"invalid rules file {value!r}: {e}") from None
++
++
+ def main(argv: list[str] | None = None) -> int:
+     parser = argparse.ArgumentParser(prog="tally")
+     parser.add_argument("csv", type=Path)
+@@ -47,6 +63,12 @@ def main(argv: list[str] | None = None) -> int:
+         metavar="N",
+         help="also list the N largest expenses, biggest first",
+     )
++    parser.add_argument(
++        "--rules",
++        type=rules_arg,
++        metavar="PATH",
++        help="also list spending per category, using word rules from a TOML file",
++    )
+     args = parser.parse_args(argv)
+     entries = read_entries(args.csv)
+     if args.month:
+@@ -55,6 +77,10 @@ def main(argv: list[str] | None = None) -> int:
+     print(f"in   {money_in:>10}")
+     print(f"out  {money_out:>10}")
+     print(f"net  {money_in - money_out:>10}")
++    if args.rules is not None:
++        print()
++        for category, spent in by_category(entries, args.rules).items():
++            print(f"{category:<20} {spent:>10}")
+     if args.top:
+         print()
+         for e in largest_expenses(entries, args.top):
+diff --git a/test_ledger.py b/test_ledger.py
+index 2c59e6d..dfe9c50 100644
+--- a/test_ledger.py
++++ b/test_ledger.py
+@@ -3,7 +3,14 @@ from pathlib import Path
+ 
+ import pytest
+ 
+-from ledger import in_month, largest_expenses, read_entries, totals
++from ledger import (
++    by_category,
++    in_month,
++    largest_expenses,
++    read_entries,
++    read_rules,
++    totals,
++)
+ from tally import main
+ 
+ CSV = """date,description,amount
+@@ -14,6 +21,10 @@ CSV = """date,description,amount
+ 2026-09-04,Corner Market,-58.20
+ """
+ 
++RULES = """Market = "groceries"
++Rent = "housing"
++"""
++
+ 
+ def test_totals(tmp_path: Path) -> None:
+     path = tmp_path / "bank.csv"
+@@ -125,3 +136,155 @@ def test_cli_top_rejects_bad_value(tmp_path: Path, bad: str) -> None:
+     with pytest.raises(SystemExit) as exc:
+         main([str(path), "--top", bad])
+     assert exc.value.code == 2
++
++
++def test_read_rules(tmp_path: Path) -> None:
++    path = tmp_path / "rules.toml"
++    path.write_text(RULES, encoding="utf-8")
++    assert list(read_rules(path).items()) == [
++        ("Market", "groceries"),
++        ("Rent", "housing"),
++    ]
++
++
++def test_by_category(tmp_path: Path) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(CSV, encoding="utf-8")
++    rules = {"Market": "groceries", "Rent": "housing"}
++    assert list(by_category(read_entries(path), rules).items()) == [
++        ("housing", Decimal("1450.00")),
++        ("groceries", Decimal("140.60")),
++    ]
++
++
++def test_by_category_unmatched_is_uncategorised(tmp_path: Path) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(CSV, encoding="utf-8")
++    assert by_category(read_entries(path), {"Rent": "housing"}) == {
++        "housing": Decimal("1450.00"),
++        "uncategorised": Decimal("140.60"),
++    }
++
++
++def test_by_category_matches_whole_word_any_case(tmp_path: Path) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(
++        "date,description,amount\n"
++        "2026-08-01,Corner MARKET,-10.00\n"
++        "2026-08-02,Parental leave,-5.00\n",
++        encoding="utf-8",
++    )
++    rules = {"market": "groceries", "Rent": "housing"}
++    assert by_category(read_entries(path), rules) == {
++        "groceries": Decimal("10.00"),
++        "uncategorised": Decimal("5.00"),
++    }
++
++
++def test_by_category_first_rule_wins(tmp_path: Path) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(
++        "date,description,amount\n2026-08-01,Market Cafe,-10.00\n",
++        encoding="utf-8",
++    )
++    rules = {"Cafe": "eating out", "Market": "groceries"}
++    assert by_category(read_entries(path), rules) == {"eating out": Decimal("10.00")}
++
++
++def test_by_category_ignores_income(tmp_path: Path) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(
++        "date,description,amount\n2026-08-20,Refund Bookshop,18.90\n",
++        encoding="utf-8",
++    )
++    assert by_category(read_entries(path), {"Bookshop": "books"}) == {}
++
++
++def test_by_category_ties_sorted_by_name(tmp_path: Path) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(
++        "date,description,amount\n2026-08-01,First,-20.00\n2026-08-02,Second,-20.00\n",
++        encoding="utf-8",
++    )
++    rules = {"First": "zeta", "Second": "alpha"}
++    assert list(by_category(read_entries(path), rules)) == ["alpha", "zeta"]
++
++
++def test_cli_rules(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(CSV, encoding="utf-8")
++    rules = tmp_path / "rules.toml"
++    rules.write_text(RULES, encoding="utf-8")
++    assert main([str(path), "--rules", str(rules)]) == 0
++    lines = capsys.readouterr().out.splitlines()
++    assert lines[3:] == [
++        "",
++        "housing                 1450.00",
++        "groceries                140.60",
++    ]
++
++
++def test_cli_rules_with_month(
++    tmp_path: Path, capsys: pytest.CaptureFixture[str]
++) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(CSV, encoding="utf-8")
++    rules = tmp_path / "rules.toml"
++    rules.write_text(RULES, encoding="utf-8")
++    assert main([str(path), "--month", "2026-09", "--rules", str(rules)]) == 0
++    lines = capsys.readouterr().out.splitlines()
++    assert lines[3:] == ["", "groceries                 58.20"]
++
++
++def test_cli_rules_biggest_spend_first(
++    tmp_path: Path, capsys: pytest.CaptureFixture[str]
++) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(CSV + "2026-08-10,Plumber,-200.00\n", encoding="utf-8")
++    rules = tmp_path / "rules.toml"
++    rules.write_text(RULES, encoding="utf-8")
++    assert main([str(path), "--rules", str(rules)]) == 0
++    lines = capsys.readouterr().out.splitlines()
++    assert [line.split()[0] for line in lines[4:]] == [
++        "housing",
++        "uncategorised",
++        "groceries",
++    ]
++
++
++def test_cli_rules_and_top(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(CSV, encoding="utf-8")
++    rules = tmp_path / "rules.toml"
++    rules.write_text(RULES, encoding="utf-8")
++    assert main([str(path), "--rules", str(rules), "--top", "1"]) == 0
++    lines = capsys.readouterr().out.splitlines()
++    assert lines[3:] == [
++        "",
++        "housing                 1450.00",
++        "groceries                140.60",
++        "",
++        "2026-08-02  Rent                    1450.00",
++    ]
++
++
++@pytest.mark.parametrize(
++    "bad",
++    [
++        None,
++        "Market = groceries\n",
++        "Market = 3\n",
++        '"Corner Market" = "groceries"\n',
++        '[shops]\nMarket = "groceries"\n',
++    ],
++    ids=["missing", "invalid-toml", "non-string", "key-with-space", "nested-table"],
++)
++def test_cli_rules_rejects_bad_file(tmp_path: Path, bad: str | None) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(CSV, encoding="utf-8")
++    rules = tmp_path / "rules.toml"
++    if bad is not None:
++        rules.write_text(bad, encoding="utf-8")
++    with pytest.raises(SystemExit) as exc:
++        main([str(path), "--rules", str(rules)])
++    assert exc.value.code == 2

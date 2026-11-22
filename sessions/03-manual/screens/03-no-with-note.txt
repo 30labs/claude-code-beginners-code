@@ -1,0 +1,188 @@
+ ▐▛███▛█   Claude Code v2.1.278
+▝▜██████▀  Opus 5 (1M context) · Claude Max
+  ▝▝ ▝▝    /tmp/tally
+
+
+❯ Add a --top N option that lists the N largest expenses,
+  biggest first. Add tests.
+
+● Bash(git ls-files && cat $(git ls-files | grep -v -E
+      '\.(lock|png)$') | head -400)
+  ⎿  .gitignore
+     bank.csv
+     ledger.py
+     … +170 lines (ctrl+o to expand)
+
+────────────────────────────────────────────────────────────────
+ Bash command
+ Tip: auto mode handles these prompts for you — choose "switch
+ to auto mode" below
+
+   │ python3 - <<'EOF'
+   │ from pathlib import Path
+   │ p=Path("ledger.py"); s=p.read_text()
+   │ s+='''
+   │
+   │ def largest_expenses(entries: list[Entry], n: int) ->
+   │ list[Entry]:
+   │     """Return the n biggest expenses, biggest first;
+   │ ties keep file order."""
+   │     expenses = [e for e in entries if e.amount < 0]
+   │     return sorted(expenses, key=lambda e: e.amount)[:n]
+   │ '''
+   │ p.write_text(s)
+   │
+   │ p=Path("tally.py"); s=p.read_text()
+   │ s=s.replace("from ledger import in_month, read_entries,
+   │ totals",
+   │ "from ledger import in_month, largest_expenses,
+   │ read_entries, totals")
+   │ s=s.replace('''def main(''','''def positive_int(value:
+   │ str) -> int:
+   │     try:
+   │         n = int(value)
+   │         if n < 1:
+   │             raise ValueError
+   │     except ValueError:
+   │         raise argparse.ArgumentTypeError(
+   │             f"invalid count {value!r}, expected a
+   │ positive integer"
+   │         ) from None
+   │     return n
+   │
+   │
+   │ def main(''')
+   │ s=s.replace('''    args = parser.parse_args(argv)''','''
+   │    parser.add_argument(
+   │         "--top", type=positive_int, metavar="N",
+   │         help="also list the N largest expenses, biggest
+   │ first",
+   │     )
+   │     args = parser.parse_args(argv)''')
+   │ s=s.replace('''    print(f"net  {money_in -
+   │ money_out:>10}")
+   │ ''','''    print(f"net  {money_in - money_out:>10}")
+   │     if args.top:
+   │         print()
+   │         for e in largest_expenses(entries, args.top):
+   │             print(f"{e.day}  {e.description:<20}
+   │ {-e.amount:>10}")
+   │ ''')
+   │ p.write_text(s)
+   │
+   │ p=Path("test_ledger.py"); s=p.read_text()
+   │ s=s.replace("from ledger import in_month, read_entries,
+   │ totals",
+   │ "from ledger import in_month, largest_expenses,
+   │ read_entries, totals")
+   │ s+='''
+   │
+   │ def test_largest_expenses(tmp_path: Path) -> None:
+   │     path = tmp_path / "bank.csv"
+   │     path.write_text(CSV, encoding="utf-8")
+   │     top = largest_expenses(read_entries(path), 2)
+   │     assert [(e.description, e.amount) for e in top] == [
+   │         ("Rent", Decimal("-1450.00")),
+   │         ("Corner Market", Decimal("-82.40")),
+   │     ]
+   │
+   │
+   │ def test_largest_expenses_skips_income_and_caps_at_avail
+   │ able(
+   │     tmp_path: Path,
+   │ ) -> None:
+   │     path = tmp_path / "bank.csv"
+   │     path.write_text(CSV, encoding="utf-8")
+   │     top = largest_expenses(read_entries(path), 10)
+   │     assert [e.amount for e in top] == [
+   │         Decimal("-1450.00"), Decimal("-82.40"),
+   │ Decimal("-58.20"),
+   │     ]
+   │
+   │
+   │ def test_largest_expenses_ties_keep_file_order(tmp_path:
+   │ Path) -> None:
+   │     path = tmp_path / "bank.csv"
+   │     path.write_text(
+   │         "date,description,amount\\n"
+   │         "2026-08-01,First,-20.00\\n"
+   │         "2026-08-02,Second,-20.00\\n",
+   │         encoding="utf-8",
+   │     )
+   │     top = largest_expenses(read_entries(path), 2)
+   │     assert [e.description for e in top] == ["First",
+   │ "Second"]
+   │
+   │
+   │ def test_cli_top(tmp_path: Path, capsys:
+   │ pytest.CaptureFixture[str]) -> None:
+   │     path = tmp_path / "bank.csv"
+   │     path.write_text(CSV, encoding="utf-8")
+   │     assert main([str(path), "--top", "2"]) == 0
+   │     lines = capsys.readouterr().out.splitlines()
+   │     assert lines[3] == ""
+   │     assert lines[4].split() == ["2026-08-02", "Rent",
+   │ "1450.00"]
+   │     assert lines[5].split() == ["2026-08-03", "Corner",
+   │ "Market", "82.40"]
+   │     assert len(lines) == 6
+   │
+   │
+   │ def test_cli_top_with_month(
+   │     tmp_path: Path, capsys: pytest.CaptureFixture[str]
+   │ ) -> None:
+   │     path = tmp_path / "bank.csv"
+   │     path.write_text(CSV, encoding="utf-8")
+   │     assert main([str(path), "--month", "2026-09",
+   │ "--top", "5"]) == 0
+   │     lines = capsys.readouterr().out.splitlines()
+   │     assert lines[4:] == [line for line in lines[4:] if
+   │ "2026-09" in line]
+   │     assert [line.split()[-1] for line in lines[4:]] ==
+   │ ["58.20"]
+   │
+   │ "2026-09" in line]
+   │     assert [line.split()[-1] for line in lines[4:]] ==
+   │ ["58.20"]
+   │
+   │
+   │ def test_cli_without_top_prints_only_totals(
+   │     tmp_path: Path, capsys: pytest.CaptureFixture[str]
+   │ ) -> None:
+   │     path = tmp_path / "bank.csv"
+   │     path.write_text(CSV, encoding="utf-8")
+   │     assert main([str(path)]) == 0
+   │     assert len(capsys.readouterr().out.splitlines()) ==
+   │ 3
+   │
+   │
+   │ @pytest.mark.parametrize("bad", ["0", "-1", "two",
+   │ "1.5"])
+   │ def test_cli_top_rejects_bad_value(tmp_path: Path, bad:
+   │ str) -> None:
+   │     path = tmp_path / "bank.csv"
+   │     path.write_text(CSV, encoding="utf-8")
+   │     with pytest.raises(SystemExit) as exc:
+   │         main([str(path), "--top", bad])
+   │     assert exc.value.code == 2
+   │ '''
+   │ p.write_text(s)
+   │ EOF
+   │ uv run pytest -q 2>&1 | tail -5; uv run python tally.py
+   │ bank.csv --top 3; uv run python tally.py bank.csv
+   │ --month 2026-08 --top 3
+   Implement --top, add tests, run them
+
+ This command requires approval
+
+ Do you want to proceed?
+   1. Yes
+   2. Yes, and don't ask again for python3 - and uv run commands
+      in /tmp/tally
+   3. Yes, and switch to auto mode · auto mode handles these
+      prompts for you
+ ❯ 4. No, Edit the files with your edit tool so I can review
+          each change.
+
+ Esc to cancel
+

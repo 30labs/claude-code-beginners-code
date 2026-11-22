@@ -1,0 +1,40 @@
+ ▐▛███▛█   Claude Code v2.1.278
+▝▜██████▀  Opus 5 (1M context) · Claude Max
+  ▝▝ ▝▝    /tmp/tally
+
+
+❯ /skills
+
+────────────────────────────────────────────────────────────────
+  Skills
+  1 skill · enter/space to cycle, / to search, t to sort, Esc
+  to close
+
+  ╭──────────────────────────────────────────────────────────╮
+  │ ⌕ Search skills…                                         │
+  ╰──────────────────────────────────────────────────────────╯
+  ❯ ✔ on         new-option · project · ~40 tok
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

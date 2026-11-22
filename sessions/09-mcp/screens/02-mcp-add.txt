@@ -1,0 +1,278 @@
+ ▐▛███▛█   Claude Code v2.1.278
+▝▜██████▀  Opus 5 (1M context) · Claude Max
+  ▝▝ ▝▝    /tmp/tally
+
+
+❯ Write tally_mcp.py, an MCP server using the official Python
+  mcp SDK, run over stdio. Give it one tool: spending(month,
+  csv_path='bank.csv', rules_path='rules.toml') that returns
+  spending by category for that month. Reuse ledger.py, add mcp
+  as a dependency with uv, and test the tool function.
+
+● Bash(cat ledger.py tally.py pyproject.toml rules.toml && head
+      -5 bank.csv && sed -n 1,40p test_ledger.py && ls)
+  ⎿  """Read a bank CSV export and add it up."""
+
+     import csv
+     … +338 lines (ctrl+o to expand)
+
+● Bash(uv add mcp 2>&1 | tail -3 && grep -A3 '^dependencies'
+      pyproject.toml && uv run python -c "import
+      mcp.server.fastmcp as f, importlib.metadata as m;
+      print(m.versi…)
+  ⎿  Error: Exit code 1
+      + typing-extensions==4.16.0
+      + typing-inspection==0.4.4
+      + uvicorn==0.53.0
+     dependencies = [
+         "mcp>=2.2.0",
+     ]
+
+     Traceback (most recent call last):
+       File "<string>", line 1, in <module>
+     … +5 lines (ctrl+o to expand)
+
+● mcp 2.x renamed the API. Let me look at the new one rather
+  than guess.
+
+● Bash(cd
+      /tmp/tally/.venv/lib/python3.13/site-packages/mcp/server
+      && ls mcpserver && grep -n "def __init__\|def tool\|def
+      run\b\|def run(\|async def call_tool\|def ad…)
+  ⎿  __init__.py
+     __pycache__
+     context.py
+     … +20 lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+● Bash(sed -n 158,175p mcpserver/server.py; sed -n 360,410p
+      mcpserver/server.py; sed -n 524,560p mcpserver/server.py;
+      sed -n 660,720p mcpserver/server.py; cat mcpserve…)
+  ⎿      def __init__(
+             self,
+             name: str | None = None,
+     … +225 lines (ctrl+o to expand)
+
+● Bash(sed -n 1,80p mcpserver/exceptions.py; grep -n
+      "UnexpectedToolError\|ToolError" mcpserver/server.py |
+      head -20)
+  ⎿  """Custom exceptions for MCPServer."""
+     … +80 lines (ctrl+o to expand)
+
+● Write(/tmp/tally/tally_mcp.py)
+  ⎿  Wrote 34 lines to ../../../../../../tally_mcp.py
+      1 """tally as an MCP server: spending by category,
+        over stdio."""
+      2
+      3 import argparse
+      4
+      6 from mcp.server.mcpserver.exceptions import ToolE
+        rror
+      7
+      8 from ledger import by_category, in_month
+      9 from tally import csv_arg, month_arg, rules_arg
+     … +31 lines (ctrl+o to expand)
+
+● Bash(cd /tmp/tally && cat > /tmp/claude-1000/-tmp-tally/f51804
+      db-fd3a-46c9-b2b7-95ad500487ae/scratchpad/probe.py <<'EOF'
+      import asyncio…)
+  ⎿  Error: Exit code 1
+     Traceback (most recent call last):
+       File "/tmp/claude-1000/-tmp-tally/f51804db-fd3a-46c9-b2b7
+     -95ad500487ae/scratchpad/probe.py", line 2, in <module>
+         from tally_mcp import server
+     ModuleNotFoundError: No module named 'tally_mcp'
+
+● Bash(cd /tmp/tally && PYTHONPATH=. uv run python
+      /tmp/claude-1000/-tmp-tally/f51804db-fd3a-46c9-b2b7-95ad50
+      0487ae/scratchpad/probe.py)
+  ⎿  [Tool(name='spending', title=None, description="Return
+      spending per category for a month (YYYY-MM), biggest
+     first.\n\nAmounts are positive decimal strings. Relati
+     … +19 lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+● The server works end to end in a probe. Now I'm writing the
+  tests.
+
+● Write(test_tally_mcp.py)
+  ⎿  Wrote 80 lines to test_tally_mcp.py
+       1 import asyncio
+       2 from pathlib import Path
+       3
+       4 import pytest
+       5 from mcp.server.mcpserver.exceptions import Tool
+       6
+       7 from tally_mcp import server, spending
+       8
+       9 CSV = """date,description,amount
+      10 2026-08-01,Salary,3200.00
+     … +88 lines (ctrl+o to expand)
+
+● Bash(uv run ruff format . && uv run ruff check . && uv run
+      pytest -q 2>&1 | tail -5)
+  ⎿  7 files left unchanged
+     All checks passed!
+     ......................................................
+     … +4 lines (ctrl+o to expand)
+
+● Everything passes. Last, a quick check that the server really
+  runs over stdio:
+
+● Bash(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initiali
+      ze","params":{"protocolVersion":"2025-06-18","capabilities
+      ":{},"clientInfo":{"name":"t","version":"0"}}…)
+  ⎿  {
+       "jsonrpc": "2.0",
+       "id": 1,
+     … +21 lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+● The initialize call worked, but the tool call got no response.
+  Stdin probably closed before the server answered, so I'll
+  keep it open for a moment:
+
+● Bash((printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initial
+      ize","params":{"protocolVersion":"2025-06-18","capabilitie
+      s":{},"clientInfo":{"name":"t","version":"0"}…)
+  ⎿  {
+       "jsonrpc": "2.0",
+       "id": 2,
+     … +18 lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+● I've added tally_mcp.py, an MCP server over stdio with the one
+  tool spending(month, csv_path='bank.csv',
+  rules_path='rules.toml'), plus tests. Format, lint and all 75
+  tests pass. I also ran the real server over stdio: for 2026-08
+  against the sample data it returns housing 1450.00, groceries
+  217.60, utilities 96.30, transport 40.00.
+
+  How it's put together
+  - Dependency: uv add mcp installed version 2.2.0. In 2.x the
+    SDK renamed FastMCP to MCPServer (in mcp.server.mcpserver),
+    so older examples online won't import as written.
+  - Reuse: the calculation is ledger.in_month plus
+    ledger.by_category. For checking input I reused month_arg,
+    csv_arg and rules_arg from tally.py, so the server rejects
+    exactly what the CLI rejects, with the same error messages.
+  - Errors: bad input raises the SDK's ToolError. In mcp 2.x any
+    other exception is hidden from the client, which only sees
+    "Error executing tool spending". With ToolError, the model
+    gets a useful message such as "invalid month '2026-13',
+    expected YYYY-MM".
+  - Output: the tool returns {category: amount} ordered biggest
+    first, with amounts as strings like "1450.00". Decimals
+    don't convert to JSON exactly, and strings avoid float
+    rounding. An empty month returns {}.
+
+  Tests are in test_tally_mcp.py. They call the function
+  directly and check:
+  - the category totals, their order, and the uncategorised
+    bucket
+  - an empty month
+  - the default paths
+  - each kind of bad input
+
+  Two more tests go through server.call_tool: one checks the
+  structured output, the other that the error message reaches
+  the client.
+
+  Relative paths: the defaults bank.csv and rules.toml are
+  looked up in the server's working directory, which is wherever
+  the MCP client starts it. Point the client at the project
+  folder, for example:
+
+  {"command": "uv", "args": ["run", "--directory", "/tmp/tally",
+  "python", "tally_mcp.py"]}
+
+  Nothing is committed yet.
+
+✻ Worked for 1m 14s · done 10:48 AM
+
+❯ Commit this.
+
+● Bash(git status --short && git add tally_mcp.py
+      test_tally_mcp.py pyproject.toml uv.lock && git commit -q
+      -F - <<'EOF'
+      Add MCP server exposing spending by category…)
+  ⎿   M pyproject.toml
+      M uv.lock
+     ?? tally_mcp.py
+     … +3 lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+● I committed the MCP server to master as b269f07. The commit
+  has tally_mcp.py, test_tally_mcp.py, and the mcp dependency
+  added to pyproject.toml and uv.lock. Nothing is left
+  uncommitted, and nothing has been pushed.
+
+✻ Sautéed for 8s · done 10:49 AM
+
+────────────────────────────────────────────────────────────────
+❯ /exit
+────────────────────────────────────────────────────────────────
+  /exit                    Exit the CLI
+  /context                 Visualize current context usage as
+                           a colored grid
+  /usage-credits           Configure usage credits or request
+                           them from your admin when you hit …
+  /doctor                  Health-check the user's Claude Code
+                           setup and fix issues: diagnose ins…
+  /artifact-capabilities   Runtime capabilities a published
+                           Artifact page can be granted — beh…
+  /verify                  Verify that a code change actually
+                           does what it's supposed to by exer…
+  /agents                  (removed) Ask Claude to
+                           create/manage subagents, or edit .…
+  /memory                  Edit CLAUDE.md files and memory
+                           settings
+  /passes                  Share a free week of Claude Code
+                           with friends and earn usage credits
+  /autocompact             Set how full the context gets
+                           before auto-summarizing
+
+
+Resume this session with:
+claude --resume f51804db-fd3a-46c9-b2b7-95ad500487ae
+reader@host:/tmp/tally$ clear
+reader@host:/tmp/tally$ claude mcp add --scope project tally -- uv r
+un python tally_mcp.py
+Added stdio MCP server tally with command: uv run python tally_m
+cp.py to project config
+File modified: /tmp/tally/.mcp.json
+reader@host:/tmp/tally$ cat .mcp.json
+{
+  "mcpServers": {
+    "tally": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "tally_mcp.py"
+      ],
+      "env": {}
+    }
+  }
+}reader@host:/tmp/tally$
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

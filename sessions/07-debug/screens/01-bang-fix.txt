@@ -1,0 +1,121 @@
+ ▐▛███▛█   Claude Code v2.1.278
+▝▜██████▀  Opus 5 (1M context) · Claude Max
+  ▝▝ ▝▝    /tmp/tally
+
+
+!  uv run python tally.py september.csv
+  ⎿  Traceback (most recent call last):
+       File "/tmp/tally/tally.py", line 92, in <module>
+         raise SystemExit(main())
+                          ~~~~^^
+       File "/tmp/tally/tally.py", line 73, in main
+         entries = read_entries(args.csv)
+       File "/tmp/tally/ledger.py", line 24, in read_entries
+         day=date.fromisoformat(row["date"]),
+                                ~~~^^^^^^^^
+     KeyError: 'date'
+
+
+● Bash(head -5 september.csv | cat -A | head -5; echo; sed -n
+      1,40p ledger.py)
+  ⎿  M-oM-;M-?date,description,amount^M$
+     2026-09-01,Salary,3200.00^M$
+     2026-09-02,Rent,-1450.00^M$
+     … +43 lines (ctrl+o to expand)
+
+● The file has a UTF-8 byte-order mark causing the first header
+  to read as "\ufeffdate" instead of "date". I'll fix this by
+  reading it with utf-8-sig encoding, which strips the BOM if
+  present.
+
+● Bash(sed -i 's/with path.open(newline="", encoding="utf-8") as
+      f:/with path.open(newline="", encoding="utf-8-sig") as
+      f:/' ledger.py && grep -n 'utf-8' ledger.py &&…)
+  ⎿  21:    with path.open(newline="", encoding="utf-8-sig"
+     ) as f:
+     1:from decimal import Decimal
+     … +4 lines (ctrl+o to expand)
+  ⎿  Updated ledger.py (+1 -1)
+      18
+      19
+      20  def read_entries(path: Path) -> list[Entry]:
+      21 -    with path.open(newline="", encoding="utf-8"
+         -) as f:
+      21 +    with path.open(newline="", encoding="utf-8-
+         +sig") as f:
+      22          return [
+      23              Entry(
+      24                  day=date.fromisoformat(row["dat
+          e"]),
+  ⎿  (what this command changed; a convenience view, not a
+     review or audit of the command)
+  ⎿  Allowed by auto mode classifier
+
+● Bash(sed -n 1,40p test_ledger.py)
+  ⎿  from decimal import Decimal
+     from pathlib import Path
+     … +37 lines (ctrl+o to expand)
+
+● Next I'll add a regression test that writes the CSV with a BOM
+  and Windows line endings, the same way september.csv is
+  saved.
+
+● Update(test_ledger.py)
+  ⎿  Added 8 lines
+      34      assert money_out == Decimal("1590.60")
+      35
+      36
+      37 +def test_read_entries_with_bom_and_crlf(tmp_pat
+         +h: Path) -> None:
+      38 +    path = tmp_path / "bank.csv"
+      39 +    path.write_bytes(b"\xef\xbb\xbf" + CSV.repl
+         +ace("\n", "\r\n").encode("utf-8"))
+      40 +    money_in, money_out = totals(read_entries(p
+         +ath))
+      41 +    assert money_in == Decimal("6300.00")
+      42 +    assert money_out == Decimal("1590.60")
+      43 +
+      44 +
+      45  def test_in_month(tmp_path: Path) -> None:
+      46      path = tmp_path / "bank.csv"
+      47      path.write_text(CSV, encoding="utf-8")
+
+● Bash(uv run ruff format . && uv run ruff check . && uv run
+      pytest -q 2>&1 | tail -3 && uv run python tally.py
+      september.csv)
+  ⎿  4 files left unchanged
+     All checks passed!
+     ....................................
+     … +5 lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+● uv run python tally.py september.csv works now: money in
+  3200.00, money out 1755.35, net 1444.65.
+
+  Cause: september.csv starts with a UTF-8 byte-order mark, an
+  invisible marker that Excel and many bank exports add at the
+  start of the file. Because the file was opened as plain utf-8,
+  the BOM stayed attached to the first column name. The header
+  was read as "\ufeffdate" instead of "date", so looking up
+  row["date"] failed with the KeyError.
+
+  Fix: In ledger.py:21, read_entries now opens files with
+  encoding="utf-8-sig". That removes a BOM when one is there and
+  reads normal files exactly as before. The file also uses
+  Windows line endings; those were already handled correctly.
+
+  Test: I added test_read_entries_with_bom_and_crlf, which
+  writes the sample CSV with a BOM and Windows line endings and
+  checks the totals. Formatting and lint are clean, and all 36
+  tests pass. I didn't run the new test against the old code to
+  see it fail first.
+
+  Nothing is committed yet.
+
+✻ Brewed for 20s · done 10:33 AM
+
+────────────────────────────────────────────────────────────────
+❯ commit this
+────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents      /rc
+

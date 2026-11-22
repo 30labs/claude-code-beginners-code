@@ -1,0 +1,180 @@
+diff --git a/.claude/settings.json b/.claude/settings.json
+new file mode 100644
+index 0000000..f464ac9
+--- /dev/null
++++ b/.claude/settings.json
+@@ -0,0 +1,13 @@
++{
++  "permissions": {
++    "allow": [
++      "Bash(uv run pytest *)",
++      "Bash(git diff *)",
++      "Bash(git status *)"
++    ],
++    "deny": [
++      "Read(./.env)",
++      "Bash(git push *)"
++    ]
++  }
++}
+diff --git a/ledger.py b/ledger.py
+index ae61a0d..db2281a 100644
+--- a/ledger.py
++++ b/ledger.py
+@@ -40,3 +40,9 @@ def totals(entries: list[Entry]) -> tuple[Decimal, Decimal]:
+ def in_month(entries: list[Entry], year: int, month: int) -> list[Entry]:
+     """Return only the entries dated in the given month."""
+     return [e for e in entries if e.day.year == year and e.day.month == month]
++
++
++def largest_expenses(entries: list[Entry], n: int) -> list[Entry]:
++    """Return the n biggest expenses, biggest first; ties keep file order."""
++    expenses = [e for e in entries if e.amount < 0]
++    return sorted(expenses, key=lambda e: e.amount)[:n]
+diff --git a/tally.py b/tally.py
+index a9d93d0..c1102ac 100644
+--- a/tally.py
++++ b/tally.py
+@@ -3,7 +3,7 @@
+ import argparse
+ from pathlib import Path
+ 
+-from ledger import in_month, read_entries, totals
++from ledger import in_month, largest_expenses, read_entries, totals
+ 
+ 
+ def month_arg(value: str) -> tuple[int, int]:
+@@ -22,12 +22,31 @@ def month_arg(value: str) -> tuple[int, int]:
+     return year_n, month_n
+ 
+ 
++def count_arg(value: str) -> int:
++    """Parse a positive integer."""
++    try:
++        n = int(value)
++        if n < 1:
++            raise ValueError
++    except ValueError:
++        raise argparse.ArgumentTypeError(
++            f"invalid count {value!r}, expected a positive integer"
++        ) from None
++    return n
++
++
+ def main(argv: list[str] | None = None) -> int:
+     parser = argparse.ArgumentParser(prog="tally")
+     parser.add_argument("csv", type=Path)
+     parser.add_argument(
+         "--month", type=month_arg, help="only count entries from YYYY-MM"
+     )
++    parser.add_argument(
++        "--top",
++        type=count_arg,
++        metavar="N",
++        help="also list the N largest expenses, biggest first",
++    )
+     args = parser.parse_args(argv)
+     entries = read_entries(args.csv)
+     if args.month:
+@@ -36,6 +55,10 @@ def main(argv: list[str] | None = None) -> int:
+     print(f"in   {money_in:>10}")
+     print(f"out  {money_out:>10}")
+     print(f"net  {money_in - money_out:>10}")
++    if args.top:
++        print()
++        for e in largest_expenses(entries, args.top):
++            print(f"{e.day}  {e.description:<20} {-e.amount:>10}")
+     return 0
+ 
+ 
+diff --git a/test_ledger.py b/test_ledger.py
+index 5089377..3787aec 100644
+--- a/test_ledger.py
++++ b/test_ledger.py
+@@ -3,7 +3,7 @@ from pathlib import Path
+ 
+ import pytest
+ 
+-from ledger import in_month, read_entries, totals
++from ledger import in_month, largest_expenses, read_entries, totals
+ from tally import main
+ 
+ CSV = """date,description,amount
+@@ -55,3 +55,77 @@ def test_cli_month_rejects_bad_value(tmp_path: Path, bad: str) -> None:
+     with pytest.raises(SystemExit) as exc:
+         main([str(path), "--month", bad])
+     assert exc.value.code == 2
++
++
++def test_largest_expenses(tmp_path: Path) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(CSV, encoding="utf-8")
++    top = largest_expenses(read_entries(path), 2)
++    assert [(e.description, e.amount) for e in top] == [
++        ("Rent", Decimal("-1450.00")),
++        ("Corner Market", Decimal("-82.40")),
++    ]
++
++
++def test_largest_expenses_skips_income_and_caps_at_available(
++    tmp_path: Path,
++) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(CSV, encoding="utf-8")
++    top = largest_expenses(read_entries(path), 10)
++    assert [e.amount for e in top] == [
++        Decimal("-1450.00"),
++        Decimal("-82.40"),
++        Decimal("-58.20"),
++    ]
++
++
++def test_largest_expenses_ties_keep_file_order(tmp_path: Path) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(
++        "date,description,amount\n"
++        "2026-08-01,First,-20.00\n"
++        "2026-08-02,Second,-20.00\n",
++        encoding="utf-8",
++    )
++    top = largest_expenses(read_entries(path), 2)
++    assert [e.description for e in top] == ["First", "Second"]
++
++
++def test_cli_top(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(CSV, encoding="utf-8")
++    assert main([str(path), "--top", "2"]) == 0
++    lines = capsys.readouterr().out.splitlines()
++    assert len(lines) == 6
++    assert lines[3] == ""
++    assert lines[4].split() == ["2026-08-02", "Rent", "1450.00"]
++    assert lines[5].split() == ["2026-08-03", "Corner", "Market", "82.40"]
++
++
++def test_cli_top_with_month(
++    tmp_path: Path, capsys: pytest.CaptureFixture[str]
++) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(CSV, encoding="utf-8")
++    assert main([str(path), "--month", "2026-09", "--top", "5"]) == 0
++    lines = capsys.readouterr().out.splitlines()
++    assert lines[4:] == ["2026-09-04  Corner Market             58.20"]
++
++
++def test_cli_without_top_prints_only_totals(
++    tmp_path: Path, capsys: pytest.CaptureFixture[str]
++) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(CSV, encoding="utf-8")
++    assert main([str(path)]) == 0
++    assert len(capsys.readouterr().out.splitlines()) == 3
++
++
++@pytest.mark.parametrize("bad", ["0", "-1", "two", "1.5"])
++def test_cli_top_rejects_bad_value(tmp_path: Path, bad: str) -> None:
++    path = tmp_path / "bank.csv"
++    path.write_text(CSV, encoding="utf-8")
++    with pytest.raises(SystemExit) as exc:
++        main([str(path), "--top", bad])
++    assert exc.value.code == 2

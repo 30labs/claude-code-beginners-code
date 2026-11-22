@@ -1,0 +1,40 @@
+ ▐▛███▛█   Claude Code v2.1.278
+▝▜██████▀  Opus 5 (1M context) · Claude Max
+  ▝▝ ▝▝    /tmp/tally
+
+
+❯ /plan Group spending by category. Categories come from a
+rules.toml file that maps a word in the description to a
+category, like Market to groceries. Anything unmatched is
+uncategorised. I want tests written first.
+  ⎿  Enabled plan mode
+
+  Listed 1 directory (ctrl+o to expand)
+────────────────────────────────────────────────────────────────
+Planning: /home/reader/.claude/plans/delegated-swinging-crab.md
+────────────────────────────────────────────────────────────────
+←  ☐ Matching  ☐ CLI  ✔ Submit  →
+
+How should a rule word match a description?
+
+❯ 1. Whole word, any case (Recommended)
+     "Market" matches "Corner Market" and "corner market", but
+     "Rent" won't match "Parental".
+  2. Substring, any case
+     "Market" matches anywhere, including "Supermarket".
+     Broader, but can mis-categorise.
+  3. Whole word, exact case
+     "Market" matches "Corner Market" but not "corner market".
+  4. Type something.
+────────────────────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · Tab/Arrow keys to navigate · Esc to cancel
+
+
+
+
+
+
+
+

@@ -1,0 +1,3 @@
+$ claude -p Run\ the\ tests.\ Reply\ with\ one\ line:\ how\ many\ passed.
+All 75 tests passed.
+exit=0

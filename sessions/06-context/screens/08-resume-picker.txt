@@ -1,0 +1,31 @@
+  Resume session
+  ╭──────────────────────────────────────────────────────────╮
+  │ ⌕ Search…                                                │
+  ╰──────────────────────────────────────────────────────────╯
+    tally
+
+  ❯ First weak spot
+    4 seconds ago · master · 166KB
+
+    Project weaknesses review
+    31 seconds ago · master · 453.3KB
+
+    spending-by-category
+    4 minutes ago · master · 388.8KB
+
+    Ruff linting and formatting setup
+    12 minutes ago · master · 282.3KB
+
+    Top N expenses option
+    17 minutes ago · master · 327.9KB
+
+    Add --month option
+    23 minutes ago · master · 192.4KB
+
+    Project overview and tests
+    30 minutes ago · master · 175.3KB
+
+    Ctrl+A to show all projects · Ctrl+B to only show current
+    branch · Space to preview · Ctrl+R to rename · Type to
+    search · Esc to cancel
+

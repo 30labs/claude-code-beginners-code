@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "tally": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "tally_mcp.py"
+      ],
+      "env": {}
+    }
+  }
+}

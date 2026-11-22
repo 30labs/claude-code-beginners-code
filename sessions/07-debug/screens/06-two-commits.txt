@@ -1,0 +1,609 @@
+ ▐▛███▛█   Claude Code v2.1.278
+▝▜██████▀  Opus 5 (1M context) · Claude Max
+  ▝▝ ▝▝    /tmp/tally
+
+
+!  uv run python tally.py september.csv
+  ⎿  Traceback (most recent call last):
+       File "/tmp/tally/tally.py", line 92, in <module>
+         raise SystemExit(main())
+                          ~~~~^^
+       File "/tmp/tally/tally.py", line 73, in main
+         entries = read_entries(args.csv)
+       File "/tmp/tally/ledger.py", line 24, in read_entries
+         day=date.fromisoformat(row["date"]),
+                                ~~~^^^^^^^^
+     KeyError: 'date'
+
+
+● Bash(head -5 september.csv | cat -A | head -5; echo; sed -n
+      1,40p ledger.py)
+  ⎿  M-oM-;M-?date,description,amount^M$
+     2026-09-01,Salary,3200.00^M$
+     2026-09-02,Rent,-1450.00^M$
+     … +43 lines (ctrl+o to expand)
+
+● The file has a UTF-8 byte-order mark causing the first header
+  to read as "\ufeffdate" instead of "date". I'll fix this by
+  reading it with utf-8-sig encoding, which strips the BOM if
+  present.
+
+● Bash(sed -i 's/with path.open(newline="", encoding="utf-8") as
+      f:/with path.open(newline="", encoding="utf-8-sig") as
+      f:/' ledger.py && grep -n 'utf-8' ledger.py &&…)
+  ⎿  21:    with path.open(newline="", encoding="utf-8-sig"
+     ) as f:
+     1:from decimal import Decimal
+     … +4 lines (ctrl+o to expand)
+  ⎿  Updated ledger.py (+1 -1)
+      18
+      19
+      20  def read_entries(path: Path) -> list[Entry]:
+      21 -    with path.open(newline="", encoding="utf-8"
+         -) as f:
+      21 +    with path.open(newline="", encoding="utf-8-
+         +sig") as f:
+      22          return [
+      23              Entry(
+      24                  day=date.fromisoformat(row["dat
+          e"]),
+  ⎿  (what this command changed; a convenience view, not a
+     review or audit of the command)
+  ⎿  Allowed by auto mode classifier
+
+● Bash(sed -n 1,40p test_ledger.py)
+  ⎿  from decimal import Decimal
+     from pathlib import Path
+     … +37 lines (ctrl+o to expand)
+
+● Next I'll add a regression test that writes the CSV with a BOM
+  and Windows line endings, the same way september.csv is
+  saved.
+
+● Update(test_ledger.py)
+  ⎿  Added 8 lines
+      34      assert money_out == Decimal("1590.60")
+      35
+      36
+      37 +def test_read_entries_with_bom_and_crlf(tmp_pat
+         +h: Path) -> None:
+      38 +    path = tmp_path / "bank.csv"
+      39 +    path.write_bytes(b"\xef\xbb\xbf" + CSV.repl
+         +ace("\n", "\r\n").encode("utf-8"))
+      40 +    money_in, money_out = totals(read_entries(p
+         +ath))
+      41 +    assert money_in == Decimal("6300.00")
+      42 +    assert money_out == Decimal("1590.60")
+      43 +
+      44 +
+      45  def test_in_month(tmp_path: Path) -> None:
+      46      path = tmp_path / "bank.csv"
+      47      path.write_text(CSV, encoding="utf-8")
+
+● Bash(uv run ruff format . && uv run ruff check . && uv run
+      pytest -q 2>&1 | tail -3 && uv run python tally.py
+      september.csv)
+  ⎿  4 files left unchanged
+     All checks passed!
+     ....................................
+     … +5 lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+● uv run python tally.py september.csv works now: money in
+  3200.00, money out 1755.35, net 1444.65.
+
+  Cause: september.csv starts with a UTF-8 byte-order mark, an
+  invisible marker that Excel and many bank exports add at the
+  start of the file. Because the file was opened as plain utf-8,
+  the BOM stayed attached to the first column name. The header
+  was read as "\ufeffdate" instead of "date", so looking up
+  row["date"] failed with the KeyError.
+
+  Fix: In ledger.py:21, read_entries now opens files with
+  encoding="utf-8-sig". That removes a BOM when one is there and
+  reads normal files exactly as before. The file also uses
+  Windows line endings; those were already handled correctly.
+
+  Test: I added test_read_entries_with_bom_and_crlf, which
+  writes the sample CSV with a BOM and Windows line endings and
+  checks the totals. Formatting and lint are clean, and all 36
+  tests pass. I didn't run the new test against the old code to
+  see it fail first.
+
+  Nothing is committed yet.
+
+✻ Brewed for 20s · done 10:33 AM
+
+❯ Prove the new test catches the bug: put back the old
+  encoding, run only that test, then restore the fix and run
+  everything.
+
+● Bash(sed -i 's/encoding="utf-8-sig") as f:/encoding="utf-8")
+      as f:/' ledger.py && grep -n 'path.open' ledger.py && uv
+      run pytest -q test_ledger.py::test_read_entries…)
+  ⎿  21:    with path.open(newline="", encoding="utf-8") as
+      f:
+     52:    with path.open("rb") as f:
+     … +10 lines (ctrl+o to expand)
+  ⎿  Updated ledger.py (+1 -1)
+      18
+      19
+      20  def read_entries(path: Path) -> list[Entry]:
+      21 -    with path.open(newline="", encoding="utf-8-
+         -sig") as f:
+      21 +    with path.open(newline="", encoding="utf-8"
+         +) as f:
+      22          return [
+      23              Entry(
+      24                  day=date.fromisoformat(row["dat
+          e"]),
+
+● The test fails with the original KeyError: 'date'. Next I'll
+  restore the fix.
+
+● Bash(sed -i '21s/encoding="utf-8") as f:/encoding="utf-8-sig")
+      as f:/' ledger.py && grep -n 'path.open' ledger.py && uv
+      run ruff format --check . && uv run ruff chec…)
+  ⎿  21:    with path.open(newline="", encoding="utf-8-sig"
+     ) as f:
+     52:    with path.open("rb") as f:
+     … +7 lines (ctrl+o to expand)
+  ⎿  Updated ledger.py (+1 -1)
+      18
+      19
+      20  def read_entries(path: Path) -> list[Entry]:
+      21 -    with path.open(newline="", encoding="utf-8"
+         -) as f:
+      21 +    with path.open(newline="", encoding="utf-8-
+         +sig") as f:
+      22          return [
+      23              Entry(
+      24                  day=date.fromisoformat(row["dat
+          e"]),
+  ⎿  Allowed by auto mode classifier
+
+● The new test catches the bug.
+
+  1. Old encoding put back: I changed ledger.py:21 back to
+     encoding="utf-8" and ran only
+     test_read_entries_with_bom_and_crlf. It failed with
+     KeyError: 'date' at ledger.py:24, the same error you got
+     from september.csv.
+  2. Fix restored: I set ledger.py:21 back to
+     encoding="utf-8-sig". The formatting check and lint are
+     clean, and all 36 tests pass.
+
+  The only changes in the working tree are the fix in ledger.py
+  and the new test in test_ledger.py. Nothing is committed yet.
+
+✻ Worked for 10s · done 10:34 AM
+
+❯ Now make every CSV problem exit cleanly with code 2: a
+  missing file, amounts like 1,234.00, and malformed rows.
+
+● Bash(cat tally.py && sed -n 40,200p ledger.py && grep -n 'def
+      test_cli\|SystemExit\|excinfo\|err' test_ledger.py | head
+      -40)
+  ⎿  """tally: summarise a bank CSV export."""
+
+     import argparse
+     … +150 lines (ctrl+o to expand)
+  ⎿  Interrupted · What should Claude do instead?
+
+❯ Commit the BOM fix first, on its own. Then do the rest as a
+  second commit.
+
+● Bash(git diff --stat && git add ledger.py test_ledger.py &&
+      git commit -q -F - <<'EOF'
+      Read CSV exports that start with a UTF-8 BOM…)
+  ⎿   ledger.py      | 2 +-
+      test_ledger.py | 8 ++++++++
+      2 files changed, 9 insertions(+), 1 deletion(-)
+     … +2 lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+● The BOM fix is committed as ad3690d. Next I'll check the
+  sample data and how the existing tests check for errors.
+
+● Bash(cut -d, -f3 bank.csv september.csv | sort -u | head -40;
+      sed -n 66,80p test_ledger.py; sed -n 280,310p
+      test_ledger.py)
+  ⎿  -1450.00
+     -1450.00
+     -40.00
+     … +49 lines (ctrl+o to expand)
+
+● Bash(sed -n 1,32p ledger.py)
+  ⎿  """Read a bank CSV export and add it up."""
+
+     import csv
+     … +29 lines (ctrl+o to expand)
+
+● Bash(python3 - <<'EOF'
+      from pathlib import Path…)
+  ⎿  Updated ledger.py (+33 -9)
+       4  import tomllib
+       5  from dataclasses import dataclass
+       6  from datetime import date
+       7 -from decimal import Decimal
+       7 +from decimal import Decimal, InvalidOperation
+       8  from pathlib import Path
+       9
+      10  UNCATEGORISED = "uncategorised"
+     ...
+      17      amount: Decimal
+      18
+      19
+      20 +class CsvError(ValueError):
+      21 +    """A bank CSV that cannot be read, with the
+         + line it went wrong on."""
+      22 +
+      23 +
+      24 +COLUMNS = ("date", "description", "amount")
+      25 +
+      26 +
+      27  def read_entries(path: Path) -> list[Entry]:
+      28 +    """Read entries from a CSV; raise CsvError
+         +on any malformed content."""
+      29      with path.open(newline="", encoding="utf-8-
+          sig") as f:
+      22 -        return [
+      23 -            Entry(
+      24 -                day=date.fromisoformat(row["dat
+         -e"]),
+      25 -                description=row["description"].
+         -strip(),
+      26 -                amount=Decimal(row["amount"]),
+      27 -            )
+      28 -            for row in csv.DictReader(f)
+      29 -        ]
+      30 +        reader = csv.DictReader(f)
+      31 +        missing = [c for c in COLUMNS if c not
+         +in (reader.fieldnames or [])]
+      32 +        if missing:
+      33 +            raise CsvError(f"missing column(s):
+         + {', '.join(missing)}")
+      34 +        return [parse_row(row, reader.line_num)
+         + for row in reader]
+      35 +
+      36 +
+      37 +def parse_row(row: dict[str | None, str | None]
+         +, line: int) -> Entry:
+      38 +    """Turn one CSV row into an Entry; raise Cs
+         +vError if it is malformed."""
+      39 +    if None in row:
+      40 +        raise CsvError(f"line {line}: too many
+         +fields")
+     … 16 more lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+● Next I'll convert the csv module's own errors, such as a NUL
+  byte or an unterminated quote in strict mode, into CsvError as
+  well:
+
+● Update(ledger.py)
+  ⎿  Added 7 lines, removed 4 lines
+      28      """Read entries from a CSV; raise CsvError
+          on any malformed content."""
+      29      with path.open(newline="", encoding="utf-8-
+          sig") as f:
+      30          reader = csv.DictReader(f)
+      31 -        missing = [c for c in COLUMNS if c not
+         -in (reader.fieldnames or [])]
+      32 -        if missing:
+      33 -            raise CsvError(f"missing column(s):
+         - {', '.join(missing)}")
+      34 -        return [parse_row(row, reader.line_num)
+         - for row in reader]
+      31 +        try:
+      32 +            missing = [c for c in COLUMNS if c
+         +not in (reader.fieldnames or [])]
+      33 +            if missing:
+      34 +                raise CsvError(f"missing column
+         +(s): {', '.join(missing)}")
+      35 +            return [parse_row(row, reader.line_
+         +num) for row in reader]
+      36 +        except csv.Error as e:
+      37 +            raise CsvError(f"line {reader.line_
+         +num}: {e}") from None
+      38
+      39
+      40  def parse_row(row: dict[str | None, str | None]
+          , line: int) -> Entry:
+
+● Next, the CLI. Following the existing rules_arg pattern, the
+  CSV is loaded inside a type= callable, so argparse reports any
+  error and exits with code 2:
+
+● Bash(python3 - <<'EOF'
+      from pathlib import Path…)
+  ⎿  diff --git a/tally.py b/tally.py
+     index 261b168..f89060c 100644
+     --- a/tally.py
+     … +38 lines (ctrl+o to expand)
+  ⎿  Updated tally.py (+12 -2)
+       5  from pathlib import Path
+       6
+       7  from ledger import (
+       8 +    CsvError,
+       9 +    Entry,
+      10      by_category,
+      11      in_month,
+      12      largest_expenses,
+     ...
+      53          raise argparse.ArgumentTypeError(f"inva
+          lid rules file {value!r}: {e}") from None
+      54
+      55
+      56 +def csv_arg(value: str) -> list[Entry]:
+      57 +    """Load the entries of a bank CSV export.""
+         +"
+      58 +    try:
+      59 +        return read_entries(Path(value))
+      60 +    except (OSError, UnicodeDecodeError, CsvErr
+         +or) as e:
+      61 +        raise argparse.ArgumentTypeError(f"inva
+         +lid bank CSV {value!r}: {e}") from None
+      62 +
+      63 +
+      64  def main(argv: list[str] | None = None) -> int:
+      65      parser = argparse.ArgumentParser(prog="tall
+          y")
+      56 -    parser.add_argument("csv", type=Path)
+      66 +    parser.add_argument("csv", type=csv_arg)
+      67      parser.add_argument(
+      68          "--month", type=month_arg, help="only c
+          ount entries from YYYY-MM"
+      69      )
+     ...
+      80          help="also list spending per category,
+          using word rules from a TOML file",
+      81      )
+      82      args = parser.parse_args(argv)
+      73 -    entries = read_entries(args.csv)
+      83 +    entries = args.csv
+      84      if args.month:
+      85          entries = in_month(entries, *args.month
+          )
+      86      money_in, money_out = totals(entries)
+  ⎿  Allowed by auto mode classifier
+
+● Now the tests. I'll add one parametrized CLI test covering
+  each failure, and check that the error message names the
+  problem:
+
+● Bash(cat >> test_ledger.py <<'EOF'…)
+  ⎿  4 files left unchanged
+     All checks passed!
+             path = tmp_path / "bank.csv"
+     … +17 lines (ctrl+o to expand)
+  ⎿  Updated test_ledger.py (+46 -0)
+      296      with pytest.raises(SystemExit) as exc:
+      297          main([str(path), "--rules", str(rules)
+           ])
+      298      assert exc.value.code == 2
+      299 +
+      300 +
+      301 +@pytest.mark.parametrize(
+      302 +    ("bad", "message"),
+      303 +    [
+      304 +        (None, "No such file"),
+      305 +        (b"", "missing column(s): date, descri
+          +ption, amount"),
+      306 +        (b"day,description,amount\n", "missing
+          + column(s): date"),
+      307 +        (b'date,description,amount\n2026-09-01
+          +,Salary,"1,234.00"\n', "'1,234.00'"),
+      308 +        (b"date,description,amount\n2026-09-01
+          +,Salary,1,234.00\n", "too many"),
+      309 +        (b"date,description,amount\n2026-09-01
+          +,Salary\n", "line 2: too few"),
+      310 +        (b"date,description,amount\n01/09/2026
+          +,Salary,1.00\n", "invalid date"),
+      311 +        (b"date,description,amount\n2026-09-01
+          +,Salary,\n", "invalid amount ''"),
+      312 +        (b"date,description,amount\n2026-09-01
+          +,Salary,NaN\n", "invalid amount"),
+      313 +        (b"date,description,amount\n2026-09-01
+          +,Caf\xe9,-3.50\n", "utf-8"),
+      314 +        (b"date,description,amount\n2026-09-01
+          +,Sal\x00ary,1.00\n", "NUL"),
+      315 +    ],
+      316 +    ids=[
+      317 +        "missing",
+      318 +        "empty",
+      319 +        "wrong-header",
+      320 +        "quoted-thousands",
+      321 +        "unquoted-thousands",
+      322 +        "short-row",
+      323 +        "bad-date",
+      324 +        "blank-amount",
+      325 +        "nan-amount",
+      326 +        "not-utf8",
+      327 +        "nul-byte",
+      328 +    ],
+      329 +)
+      330 +def test_cli_rejects_bad_csv(
+      331 +    tmp_path: Path,
+      332 +    capsys: pytest.CaptureFixture[str],
+      333 +    bad: bytes | None,
+      334 +    message: str,
+      335 +) -> None:
+     … 9 more lines (ctrl+o to expand)
+
+● Python 3.11 and later no longer rejects NUL bytes, so that
+  test case was wrong, not the code. Next I'll check what can
+  still raise csv.Error, so the conversion branch has a real
+  test:
+
+● Bash(uv run python - <<'EOF'
+      import csv, io…)
+  ⎿  ok
+     csv.Error: field larger than field limit (131072)
+  ⎿  Allowed by auto mode classifier
+
+● An unterminated quote parses into a short row, which the "too
+  few fields" check already catches. An oversized field is what
+  still raises csv.Error. I'll swap the NUL test for these two
+  cases:
+
+● Bash(python3 - <<'EOF'
+      from pathlib import Path…)
+  ⎿  4 files left unchanged
+     All checks passed!
+     ................................................
+     … +2 lines (ctrl+o to expand)
+  ⎿  Updated test_ledger.py (+4 -2)
+      311          (b"date,description,amount\n2026-09-01
+           ,Salary,\n", "invalid amount ''"),
+      312          (b"date,description,amount\n2026-09-01
+           ,Salary,NaN\n", "invalid amount"),
+      313          (b"date,description,amount\n2026-09-01
+           ,Caf\xe9,-3.50\n", "utf-8"),
+      314 -        (b"date,description,amount\n2026-09-01
+          -,Sal\x00ary,1.00\n", "NUL"),
+      314 +        (b'date,description,amount\n2026-09-01
+          +,"Salary,1.00\n', "too few"),
+      315 +        (b'date,description,amount\n2026-09-01
+          +,"' + b"x" * 200_000, "field limit"),
+      316      ],
+      317      ids=[
+      318          "missing",
+     ...
+      325          "blank-amount",
+      326          "nan-amount",
+      327          "not-utf8",
+      327 -        "nul-byte",
+      328 +        "unclosed-quote",
+      329 +        "huge-field",
+      330      ],
+      331  )
+      332  def test_cli_rejects_bad_csv(
+  ⎿  Allowed by auto mode classifier
+
+● Everything passes. Next I'll try it end to end from the shell:
+
+● Bash(S=/tmp/claude-1000/-tmp-tally/b0934324-5935-40e1-a27c-207
+      ff2dde149/scratchpad && mkdir -p $S && printf 'date,descri
+      ption,amount\n2026-09-01,Salary,"1,234.00"\n'…)
+  ⎿  usage: tally [-h] [--month MONTH] [--top N] [--rules P
+     ATH] csv
+     tally: error: argument csv: invalid bank CSV 'nope.csv
+     … +16 lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+● Everything works. CLAUDE.md lists the type= validators and
+  describes read_entries, so I'll update both lines to match,
+  then commit:
+
+● Bash(sed -i 's/(`month_arg`, `count_arg`,
+      `rules_arg`)/(`csv_arg`, `month_arg`, `count_arg`,
+      `rules_arg`)/; s/signed amounts where negative = expense)
+      into frozen `E…)
+  ⎿   CLAUDE.md      |  4 ++--
+      ledger.py      | 45 +++++++++++++++++++++++++++++++++
+     +++---------
+     … +11 lines (ctrl+o to expand)
+  ⎿  Updated CLAUDE.md (+2 -2)
+      33
+      34  Flat layout, two modules, no package:
+      35
+      36 -- `ledger.py` — pure logic. `read_entries` pars
+         -es the CSV (columns `date,description,amount`;
+         -ISO dates; signed amounts where negative = expe
+         -nse) into frozen `Entry` dataclasses. The other
+         - functions (`totals`, `in_month`, `largest_expe
+         -nses`) are pure list transforms over `Entry`s.
+         -`read_rules` loads a flat TOML table of `word =
+         - "category"` (stdlib `tomllib`); `by_category`
+         -sums expenses per category, matching whole word
+         -s case-insensitively with the first rule in fil
+         -e order winning, unmatched → `uncategorised`, o
+         -rdered biggest spend first (ties by name).
+      37 -- `tally.py` — the argparse CLI. `main(argv)` t
+         -akes an explicit argv list and returns an exit
+         -code, which is how tests drive it. Argument val
+         -idation lives in custom `type=` callables (`mon
+         -th_arg`, `count_arg`, `rules_arg`) that raise `
+         -argparse.ArgumentTypeError`, so bad input exits
+         - with code 2.
+      36 +- `ledger.py` — pure logic. `read_entries` pars
+         +es the CSV (columns `date,description,amount`;
+         +ISO dates; signed amounts where negative = expe
+         +nse) into frozen `Entry` dataclasses, raising `
+         +CsvError` (a `ValueError`, with the line number
+         +) on missing columns, wrong field counts, bad d
+         +ates, or non-numeric amounts such as `1,234.00`
+         +. The other functions (`totals`, `in_month`, `l
+         +argest_expenses`) are pure list transforms over
+         + `Entry`s. `read_rules` loads a flat TOML table
+         + of `word = "category"` (stdlib `tomllib`); `by
+         +_category` sums expenses per category, matching
+         + whole words case-insensitively with the first
+         +rule in file order winning, unmatched → `uncate
+         +gorised`, ordered biggest spend first (ties by
+         +name).
+      37 +- `tally.py` — the argparse CLI. `main(argv)` t
+         +akes an explicit argv list and returns an exit
+         +code, which is how tests drive it. Argument val
+         +idation lives in custom `type=` callables (`csv
+         +_arg`, `month_arg`, `count_arg`, `rules_arg`) t
+         +hat raise `argparse.ArgumentTypeError`, so bad
+         +input exits with code 2.
+      38  - `test_ledger.py` — tests for both modules. Ea
+          ch test writes a CSV string to `tmp_path`; CLI
+          tests call `main([...])` and assert on `capsys`
+           output.
+      39  - `bank.csv`, `rules.toml` — sample data for ma
+          nual runs, not used by tests.
+      40
+  ⎿  Allowed by auto mode classifier
+
+● Both commits are on master:
+
+  - ad3690d has only the BOM fix and its test.
+  - c9a2b9a makes every CSV problem exit with code 2 and a
+    one-line message instead of a traceback:
+  tally: error: argument csv: invalid bank CSV 'thousands.csv':
+  line 2: invalid amount '1,234.00'
+
+  How it works: the CSV is now loaded by a csv_arg validator on
+  the command-line argument, the same way --rules already is. So
+  a bad file is handled like any other bad argument: the usage
+  line, the message, and exit code 2. In ledger.py, read_entries
+  raises a new CsvError that includes the line number.
+
+  Problems it catches:
+  - a missing or unreadable file
+  - a file that isn't UTF-8
+  - an empty file, or missing date/description/amount columns
+  - rows with too many or too few fields
+  - bad dates
+  - blank or NaN amounts
+  - oversized fields, the one csv-module error that can still
+    happen
+
+  Checks: 12 new test cases. Formatting and lint are clean, and
+  all 48 tests pass. Run by hand, a missing file, "1,234.00",
+  and a short row each exit 2 with the message, and
+  september.csv still gives the same totals.
+
+  Things to know:
+  - 1,234.00 is rejected, not read as 1234.00. That's how I read
+    your request. If you'd rather tally ignore the thousands
+    separator, it's a small change, but it would guess wrong on
+    files that use a comma as the decimal point (1.234,00).
+  - Unquoted 1,234.00 shows up as "too many fields", because the
+    comma splits it into an extra column.
+  - NUL bytes aren't rejected. I first tested for them, but
+    Python 3.11 and later reads them without complaint.
+  - I updated CLAUDE.md so its architecture notes mention
+    csv_arg and CsvError.
+
+✻ Cooked for 1m 28s · done 10:37 AM
+
+────────────────────────────────────────────────────────────────
+❯ push both commits
+────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents      /rc
+

@@ -1,0 +1,10 @@
+The commit command Claude ran in this session, copied from its transcript
+(Bash tool input). The claude.ai session link is redacted.
+
+git add ledger.py tally.py test_ledger.py && git commit -q -F - <<'EOF'
+Add --month option to only count entries from one month
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_[redacted]
+EOF
+git log --oneline -1 && git status --short

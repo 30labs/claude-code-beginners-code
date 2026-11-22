@@ -1,0 +1,40 @@
+ ▐▛███▛█   Claude Code v2.1.278
+▝▜██████▀  Opus 5 (1M context) · Claude Max
+  ▝▝ ▝▝    /tmp/tally
+
+▎ Auto mode is now Claude Code's default permission mode.
+▎ Auto mode lets Claude handle permission prompts automatically.
+▎ Claude checks each tool call for risky actions and prompt
+▎ injection before executing, runs the ones it assesses as
+▎ lower-risk, and blocks the rest.
+▎ https://code.claude.com/docs/en/permission-modes
+
+────────────────────────────────────────────────────────────────
+❯ Try "refactor <filepath>"
+────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
+  tmux focus-events off · add 'set -g focus-events on' to ~/.…
+                                                           /rc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

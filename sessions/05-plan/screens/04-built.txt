@@ -1,0 +1,793 @@
+ ▐▛███▛█   Claude Code v2.1.278
+▝▜██████▀  Opus 5 (1M context) · Claude Max
+  ▝▝ ▝▝    /tmp/tally
+
+
+❯ /plan Group spending by category. Categories come from a
+rules.toml file that maps a word in the description to a
+category, like Market to groceries. Anything unmatched is
+uncategorised. I want tests written first.
+  ⎿  Enabled plan mode
+
+  Listed 1 directory (ctrl+o to expand)
+
+● User answered Claude's questions:
+  ⎿  · How should a rule word match a description? → Whole word,
+     any case (Recommended)
+     · How should the CLI pick up the rules file? → --rules PATH
+     flag (Recommended)
+
+● Updated plan
+  ⎿  /plan to preview
+
+────────────────────────────────────────────────────────────────
+ Ready to code?
+
+ Here is Claude's plan:
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Plan: spending by category (tests first)
+
+ Context
+
+ tally currently reports only in/out/net and the largest
+ expenses. The user wants spending grouped by category, where
+ categories come from a rules.toml file mapping a word in the
+ description to a category (e.g. Market → groceries); unmatched
+ expenses are uncategorised. Tests are written first and must
+ fail before the implementation lands.
+
+ Decisions (confirmed with user):
+ - Match = whole word, case-insensitive ("Market" matches
+   "Corner Market"/"corner market", "Rent" does not match
+   "Parental").
+ - CLI opt-in via --rules PATH; without it output is unchanged.
+
+ Further defaults (mine, easy to change):
+ - Only expenses (amount < 0) are grouped — it's "spending";
+   income such as "Refund Bookshop" is ignored, like
+   largest_expenses.
+ - If several rules match, the first rule in file order wins
+   (tomllib preserves order).
+ - Words are the description split on whitespace; rule keys
+   compared with casefold().
+ - Output order: categories by total descending, ties by name;
+   uncategorised always last and only shown if non-zero.
+ - Parsed with stdlib tomllib — still no runtime dependencies.
+
+ rules.toml format
+
+ Flat top-level table, word → category:
+ Market = "groceries"
+ Rent = "housing"
+ Metro = "transport"
+ Rejected (exit code 2): missing/unreadable file, invalid TOML,
+ a non-string value, a key containing whitespace (can never
+ match a single word).
+
+ Step 1 — tests (test_ledger.py), run and confirm they fail
+
+ Follow the existing pattern: write CSV/TOML strings to
+ tmp_path, CLI tests call main([...]) and use capsys.
+
+ Pure logic (ledger.py):
+ - test_read_rules — parses the table into a dict[str, str] in
+   file order.
+ - test_by_category — Rent→housing, both Corner Market rows
+   summed into groceries (positive Decimals), income excluded.
+ - test_by_category_unmatched_is_uncategorised
+ - test_by_category_matches_whole_word_any_case — market rule
+   matches "Corner MARKET"; Rent rule does not match "Parental
+   leave".
+ - test_by_category_first_rule_wins — description matching two
+   rules goes to the rule listed first.
+ - test_by_category_ignores_income
+
+ CLI (tally.py):
+ - test_cli_rules — exact lines after a blank line, e.g.
+   "housing                 1450.00" (<20 / >10).
+ - test_cli_rules_with_month — breakdown respects --month.
+ - test_cli_rules_orders_by_total_uncategorised_last
+ - test_cli_rules_and_top — both sections present, in a fixed
+   order (totals, blank, categories, blank, top).
+ - test_cli_without_rules_prints_only_totals — existing test
+   already covers this; keep.
+ - test_cli_rules_rejects_bad_file (parametrised: missing file,
+   invalid TOML, non-string value, key with space) →
+   SystemExit code 2.
+
+ Step 2 — implementation
+
+ ledger.py:
+ - read_rules(path: Path) -> dict[str, str] — tomllib.load
+   (binary mode), validate values are str and keys have no
+   whitespace, raise ValueError otherwise.
+ - UNCATEGORISED = "uncategorised"
+ - categorise(description: str, rules: dict[str, str]) -> str —
+   casefold description words into a set; return the category
+   of the first rule whose casefolded key is in it, else
+   UNCATEGORISED.
+ - by_category(entries, rules) -> dict[str, Decimal] — expenses
+   only, positive totals, Decimal(0) start values; returns the
+   dict already ordered (total desc, name asc, uncategorised
+   last) so the CLI just prints it.
+ ▐▛███▛█   Claude Code v2.1.278
+▝▜██████▀  Opus 5 (1M context) · Claude Max
+  ▝▝ ▝▝    /tmp/tally
+
+
+❯ /plan Group spending by category. Categories come from a
+rules.toml file that maps a word in the description to a
+category, like Market to groceries. Anything unmatched is
+uncategorised. I want tests written first.
+  ⎿  Enabled plan mode
+
+  Listed 1 directory (ctrl+o to expand)
+
+● User answered Claude's questions:
+  ⎿  · How should a rule word match a description? → Whole word,
+     any case (Recommended)
+     · How should the CLI pick up the rules file? → --rules PATH
+     flag (Recommended)
+
+● Updated plan
+  ⎿  /plan to preview
+  ⎿  User rejected Claude's plan:
+     ╭─────────────────────────────────────────────────────────╮
+     │ Plan: spending by category (tests first)                │
+     │                                                         │
+     │ Context                                                 │
+     │                                                         │
+     │ tally currently reports only in/out/net and the largest │
+     │ expenses. The user wants spending grouped by category,  │
+     │ where categories come from a rules.toml file mapping a  │
+     │ word in the description to a category (e.g. Market →    │
+     │ groceries); unmatched expenses are uncategorised. Tests │
+     │ are written first and must fail before the              │
+     │ implementation lands.                                   │
+     │                                                         │
+     │ Decisions (confirmed with user):                        │
+     │ - Match = whole word, case-insensitive ("Market"        │
+     │   matches "Corner Market"/"corner market", "Rent" does  │
+     │   not match "Parental").                                │
+     │ - CLI opt-in via --rules PATH; without it output is     │
+     │   unchanged.                                            │
+     │                                                         │
+     │ Further defaults (mine, easy to change):                │
+     │ - Only expenses (amount < 0) are grouped — it's         │
+     │   "spending"; income such as "Refund Bookshop" is       │
+     │   ignored, like largest_expenses.                       │
+     │ - If several rules match, the first rule in file order  │
+     │   wins (tomllib preserves order).                       │
+     │ - Words are the description split on whitespace; rule   │
+     │   keys compared with casefold().                        │
+     │ - Output order: categories by total descending, ties by │
+     │   name; uncategorised always last and only shown if     │
+     │   non-zero.                                             │
+     │ - Parsed with stdlib tomllib — still no runtime         │
+     │   dependencies.                                         │
+     │                                                         │
+     │ rules.toml format                                       │
+     │                                                         │
+     │ Flat top-level table, word → category:                  │
+     │ Market = "groceries"                                    │
+     │ Rent = "housing"                                        │
+     │ Metro = "transport"                                     │
+     │ Rejected (exit code 2): missing/unreadable file,        │
+     │ invalid TOML, a non-string value, a key containing      │
+     │ whitespace (can never match a single word).             │
+     │                                                         │
+     │ Step 1 — tests (test_ledger.py), run and confirm they   │
+     │ fail                                                    │
+     │                                                         │
+     │ Follow the existing pattern: write CSV/TOML strings to  │
+     │ tmp_path, CLI tests call main([...]) and use capsys.    │
+     │                                                         │
+     │ Pure logic (ledger.py):                                 │
+     │ - test_read_rules — parses the table into a dict[str,   │
+     │   str] in file order.                                   │
+     │ - test_by_category — Rent→housing, both Corner Market   │
+     │   rows summed into groceries (positive Decimals),       │
+     │   income excluded.                                      │
+     │ - test_by_category_unmatched_is_uncategorised           │
+     │ - test_by_category_matches_whole_word_any_case — market │
+     │   rule matches "Corner MARKET"; Rent rule does not      │
+     │   match "Parental leave".                               │
+     │ - test_by_category_first_rule_wins — description        │
+     │   matching two rules goes to the rule listed first.     │
+     │ - test_by_category_ignores_income                       │
+     │                                                         │
+     │ CLI (tally.py):                                         │
+     │ - test_cli_rules — exact lines after a blank line, e.g. │
+     │   "housing                 1450.00" (<20 / >10).        │
+     │ - test_cli_rules_with_month — breakdown respects        │
+     │   --month.                                              │
+     │ - test_cli_rules_orders_by_total_uncategorised_last     │
+     │ - test_cli_rules_and_top — both sections present, in a  │
+     │   fixed order (totals, blank, categories, blank, top).  │
+     │ - test_cli_without_rules_prints_only_totals — existing  │
+     │   test already covers this; keep.                       │
+     │ - test_cli_rules_rejects_bad_file (parametrised:        │
+     │   missing file, invalid TOML, non-string value, key     │
+     │   with space) → SystemExit code 2.                      │
+     │                                                         │
+     │ Step 2 — implementation                                 │
+     │                                                         │
+     │ ledger.py:                                              │
+     │ - read_rules(path: Path) -> dict[str, str] —            │
+     │   tomllib.load (binary mode), validate values are str   │
+     │   and keys have no whitespace, raise ValueError         │
+     │   otherwise.                                            │
+     │ - UNCATEGORISED = "uncategorised"                       │
+     │ - categorise(description: str, rules: dict[str, str])   │
+     │   -> str — casefold description words into a set;       │
+     │   return the category of the first rule whose           │
+     │   casefolded key is in it, else UNCATEGORISED.          │
+     │ - by_category(entries, rules) -> dict[str, Decimal] —   │
+     │   expenses only, positive totals, Decimal(0) start      │
+     │   values; returns the dict already ordered (total desc, │
+     │   name asc, uncategorised last) so the CLI just prints  │
+     │   it.                                                   │
+     │                                                         │
+     │ tally.py:                                               │
+     │ - rules_arg(value: str) -> dict[str, str] — calls       │
+     │   read_rules(Path(value)), converts                     │
+     │   OSError/tomllib.TOMLDecodeError/ValueError to         │
+     │   argparse.ArgumentTypeError (same pattern as           │
+     │   month_arg/count_arg) → exit 2.                        │
+     │ - --rules option with metavar="PATH" and help text;     │
+     │   after the totals, if given, print a blank line then   │
+     │   f"{category:<20} {total:>10}" per category. Printed   │
+     │   before the --top section.                             │
+     │                                                         │
+     │ Also: add a sample rules.toml next to bank.csv for      │
+     │ manual runs; update CLAUDE.md (architecture/commands)   │
+     │ to mention read_rules/by_category, --rules and the      │
+     │ sample file.                                            │
+     │                                                         │
+     │ Verification                                            │
+     │                                                         │
+     │ 1. After Step 1: uv run pytest — new tests fail         │
+     │    (ImportError / missing option), old ones still pass. │
+     │ 2. After Step 2: uv run ruff format ., uv run ruff      │
+     │    check ., uv run pytest all pass.                     │
+     │ 3. Manual: uv run python tally.py bank.csv --rules      │
+     │    rules.toml and ... --month 2026-08 --rules           │
+     │    rules.toml --top 3 — check groceries = 217.60 for    │
+     │    August (82.40 + 61.15 + 74.05) and Electricity shows │
+     │    under its category or uncategorised as expected.     │
+     ╰─────────────────────────────────────────────────────────╯
+
+● Updated plan
+  ⎿  /plan to preview
+
+● Updated plan
+  ⎿  /plan to preview
+
+● Updated plan
+  ⎿  /plan to preview
+
+────────────────────────────────────────────────────────────────
+ Ready to code?
+
+ Here is Claude's plan:
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Plan: spending by category (tests first)
+
+ Context
+
+ tally currently reports only in/out/net and the largest
+ expenses. The user wants spending grouped by category, where
+ categories come from a rules.toml file mapping a word in the
+ description to a category (e.g. Market → groceries); unmatched
+ expenses are uncategorised. Tests are written first and must
+ fail before the implementation lands.
+
+ Decisions (confirmed with user):
+ - Match = whole word, case-insensitive ("Market" matches
+   "Corner Market"/"corner market", "Rent" does not match
+   "Parental").
+ - CLI opt-in via --rules PATH; without it output is unchanged.
+
+ Further defaults (mine, easy to change):
+ - Only expenses (amount < 0) are grouped — it's "spending";
+   income such as "Refund Bookshop" is ignored, like
+   largest_expenses.
+ - If several rules match, the first rule in file order wins
+   (tomllib preserves order).
+ - Words are the description split on whitespace; rule keys
+   compared with casefold().
+ - Output order (user request): biggest spend first — all
+   categories, uncategorised included, sorted by total
+   descending; ties broken by name. uncategorised only appears
+   if something is unmatched.
+ - Parsed with stdlib tomllib — still no runtime dependencies.
+
+ rules.toml format
+
+ Flat top-level table, word → category:
+ Market = "groceries"
+ Rent = "housing"
+ Metro = "transport"
+ Rejected (exit code 2): missing/unreadable file, invalid TOML,
+ a non-string value, a key containing whitespace (can never
+ match a single word).
+
+ Step 1 — tests (test_ledger.py), run and confirm they fail
+
+ Follow the existing pattern: write CSV/TOML strings to
+ tmp_path, CLI tests call main([...]) and use capsys.
+
+ Pure logic (ledger.py):
+ - test_read_rules — parses the table into a dict[str, str] in
+   file order.
+ - test_by_category — Rent→housing, both Corner Market rows
+   summed into groceries (positive Decimals), income excluded.
+ - test_by_category_unmatched_is_uncategorised
+ - test_by_category_matches_whole_word_any_case — market rule
+   matches "Corner MARKET"; Rent rule does not match "Parental
+   leave".
+ - test_by_category_first_rule_wins — description matching two
+   rules goes to the rule listed first.
+ - test_by_category_ignores_income
+
+ CLI (tally.py):
+ - test_cli_rules — exact lines after a blank line, e.g.
+   "housing                 1450.00" (<20 / >10).
+ - test_cli_rules_with_month — breakdown respects --month.
+ - test_cli_rules_biggest_spend_first — lines are in descending
+   total order, with uncategorised sorted among them by its
+   total (not pinned last).
+ - test_by_category_ties_sorted_by_name — equal totals come out
+   alphabetically.
+ - test_cli_rules_and_top — both sections present, in a fixed
+   order (totals, blank, categories, blank, top).
+ - test_cli_without_rules_prints_only_totals — existing test
+   already covers this; keep.
+ - test_cli_rules_rejects_bad_file (parametrised: missing file,
+   invalid TOML, non-string value, key with space) →
+   SystemExit code 2.
+
+ Step 2 — implementation
+
+ ledger.py:
+ - read_rules(path: Path) -> dict[str, str] — tomllib.load
+   (binary mode), validate values are str and keys have no
+   whitespace, raise ValueError otherwise.
+ - UNCATEGORISED = "uncategorised"
+ - categorise(description: str, rules: dict[str, str]) -> str —
+   casefold description words into a set; return the category
+   of the first rule whose casefolded key is in it, else
+   UNCATEGORISED.
+ - by_category(entries, rules) -> dict[str, Decimal] — expenses
+   only, positive totals, Decimal(0) start values; returns the
+   dict already ordered biggest spend first (total desc, then
+   name asc) so the CLI just prints it.
+     │   after the totals, if given, print a blank line then   │
+     │   f"{category:<20} {total:>10}" per category. Printed   │
+     │   before the --top section.                             │
+     │                                                         │
+     │ Also: add a sample rules.toml next to bank.csv for      │
+     │ manual runs; update CLAUDE.md (architecture/commands)   │
+     │ to mention read_rules/by_category, --rules and the      │
+     │ sample file.                                            │
+     │                                                         │
+     │ Verification                                            │
+     │                                                         │
+     │ 1. After Step 1: uv run pytest — new tests fail         │
+     │    (ImportError / missing option), old ones still pass. │
+     │ 2. After Step 2: uv run ruff format ., uv run ruff      │
+     │    check ., uv run pytest all pass.                     │
+     │ 3. Manual: uv run python tally.py bank.csv --rules      │
+     │    rules.toml and ... --month 2026-08 --rules           │
+     │    rules.toml --top 3 — check groceries = 217.60 for    │
+     │    August (82.40 + 61.15 + 74.05) and Electricity shows │
+     │    under its category or uncategorised as expected.     │
+     ╰─────────────────────────────────────────────────────────╯
+
+● Updated plan
+  ⎿  /plan to preview
+
+● Updated plan
+  ⎿  /plan to preview
+
+● Updated plan
+  ⎿  /plan to preview
+
+● User approved Claude's plan
+  ⎿  Plan saved to: ~/.claude/plans/delegated-swinging-crab.md ·
+     /plan to edit
+     Plan: spending by category (tests first)
+
+     Context
+
+     tally currently reports only in/out/net and the largest
+     expenses. The user wants spending grouped by category,
+     where categories come from a rules.toml file mapping a word
+     in the description to a category (e.g. Market →
+     groceries); unmatched expenses are uncategorised. Tests are
+     written first and must fail before the implementation
+     lands.
+
+     Decisions (confirmed with user):
+     - Match = whole word, case-insensitive ("Market" matches
+       "Corner Market"/"corner market", "Rent" does not match
+       "Parental").
+     - CLI opt-in via --rules PATH; without it output is
+       unchanged.
+
+     Further defaults (mine, easy to change):
+     - Only expenses (amount < 0) are grouped — it's "spending";
+       income such as "Refund Bookshop" is ignored, like
+       largest_expenses.
+     - If several rules match, the first rule in file order wins
+       (tomllib preserves order).
+     - Words are the description split on whitespace; rule keys
+       compared with casefold().
+     - Output order (user request): biggest spend first — all
+       categories, uncategorised included, sorted by total
+       descending; ties broken by name. uncategorised only
+       appears if something is unmatched.
+     - Parsed with stdlib tomllib — still no runtime
+       dependencies.
+
+     rules.toml format
+
+     Flat top-level table, word → category:
+     Market = "groceries"
+     Rent = "housing"
+     Metro = "transport"
+     Rejected (exit code 2): missing/unreadable file, invalid
+     TOML, a non-string value, a key containing whitespace (can
+     never match a single word).
+
+     Step 1 — tests (test_ledger.py), run and confirm they fail
+
+     Follow the existing pattern: write CSV/TOML strings to
+     tmp_path, CLI tests call main([...]) and use capsys.
+
+     Pure logic (ledger.py):
+     - test_read_rules — parses the table into a dict[str, str]
+       in file order.
+     - test_by_category — Rent→housing, both Corner Market rows
+       summed into groceries (positive Decimals), income
+       excluded.
+     - test_by_category_unmatched_is_uncategorised
+     - test_by_category_matches_whole_word_any_case — market
+       rule matches "Corner MARKET"; Rent rule does not match
+       "Parental leave".
+     - test_by_category_first_rule_wins — description matching
+       two rules goes to the rule listed first.
+     - test_by_category_ignores_income
+
+     CLI (tally.py):
+     - test_cli_rules — exact lines after a blank line, e.g.
+       "housing                 1450.00" (<20 / >10).
+     - test_cli_rules_with_month — breakdown respects --month.
+     - test_cli_rules_biggest_spend_first — lines are in
+       descending total order, with uncategorised sorted among
+       them by its total (not pinned last).
+     - test_by_category_ties_sorted_by_name — equal totals come
+       out alphabetically.
+     - test_cli_rules_and_top — both sections present, in a
+       fixed order (totals, blank, categories, blank, top).
+     - test_cli_without_rules_prints_only_totals — existing test
+       already covers this; keep.
+     - test_cli_rules_rejects_bad_file (parametrised: missing
+       file, invalid TOML, non-string value, key with space) →
+       SystemExit code 2.
+
+     Step 2 — implementation
+
+     ledger.py:
+     - read_rules(path: Path) -> dict[str, str] — tomllib.load
+       (binary mode), validate values are str and keys have no
+       whitespace, raise ValueError otherwise.
+     - UNCATEGORISED = "uncategorised"
+     - categorise(description: str, rules: dict[str, str]) ->
+       str — casefold description words into a set; return the
+       category of the first rule whose casefolded key is in it,
+       else UNCATEGORISED.
+     - by_category(entries, rules) -> dict[str, Decimal] —
+       expenses only, positive totals, Decimal(0) start values;
+       returns the dict already ordered biggest spend first
+       (total desc, then name asc) so the CLI just prints it.
+
+     tally.py:
+     - rules_arg(value: str) -> dict[str, str] — calls
+       read_rules(Path(value)), converts
+       OSError/tomllib.TOMLDecodeError/ValueError to
+       argparse.ArgumentTypeError (same pattern as
+       month_arg/count_arg) → exit 2.
+     - --rules option with metavar="PATH" and help text; after
+       the totals, if given, print a blank line then
+       f"{category:<20} {total:>10}" per category. Printed
+       before the --top section.
+
+     Also: add a sample rules.toml next to bank.csv for manual
+     runs; update CLAUDE.md (architecture/commands) to mention
+     read_rules/by_category, --rules and the sample file.
+
+     Verification
+
+     1. After Step 1: uv run pytest — new tests fail
+        (ImportError / missing option), old ones still pass.
+     2. After Step 2: uv run ruff format ., uv run ruff check .,
+        uv run pytest all pass.
+     3. Manual: uv run python tally.py bank.csv --rules
+        rules.toml and ... --month 2026-08 --rules rules.toml
+        --top 3 — check groceries = 217.60 for August (82.40 +
+        61.15 + 74.05) and Electricity shows under its category
+        or uncategorised as expected.
+
+● Plan approved. Step 1: tests first.
+
+● Bash(python3 - <<'EOF'
+      import re…)
+  ⎿  1 file left unchanged
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     ^^^^^^^^^
+     … +10 lines (ctrl+o to expand)
+  ⎿  Updated test_ledger.py (+164 -1)
+       3
+       4  import pytest
+       5
+       6 -from ledger import in_month, largest_expenses,
+         -read_entries, totals
+       6 +from ledger import (
+       7 +    by_category,
+       8 +    in_month,
+       9 +    largest_expenses,
+      10 +    read_entries,
+      11 +    read_rules,
+      12 +    totals,
+      13 +)
+      14  from tally import main
+      15
+      16  CSV = """date,description,amount
+     ...
+      21  2026-09-04,Corner Market,-58.20
+      22  """
+      23
+      24 +RULES = """Market = "groceries"
+      25 +Rent = "housing"
+      26 +"""
+      27 +
+      28
+      29  def test_totals(tmp_path: Path) -> None:
+      30      path = tmp_path / "bank.csv"
+     ...
+      136      with pytest.raises(SystemExit) as exc:
+      137          main([str(path), "--top", bad])
+      138      assert exc.value.code == 2
+      139 +
+      140 +
+      141 +def test_read_rules(tmp_path: Path) -> None:
+      142 +    path = tmp_path / "rules.toml"
+      143 +    path.write_text(RULES, encoding="utf-8")
+      144 +    assert list(read_rules(path).items()) == [
+      145 +        ("Market", "groceries"),
+      146 +        ("Rent", "housing"),
+      147 +    ]
+      148 +
+      149 +
+      150 +def test_by_category(tmp_path: Path) -> None:
+     … 140 more lines (ctrl+o to expand)
+  ⎿  (what this command changed; a convenience view, not a
+     review or audit of the command)
+  ⎿  Allowed by auto mode classifier
+
+● Tests are red (the import fails at collection, so the whole
+  module errors, not only the new tests). Now the
+  implementation.
+
+● Bash(python3 - <<'EOF'
+      p = "ledger.py"…)
+  ⎿  Error: Exit code 1
+     1 file reformatted, 3 files left unchanged
+     TRY004 Prefer `TypeError` exception for invalid type
+       --> ledger.py:56:13
+        |
+     54 |     for word, category in rules.items():
+     55 |         if not isinstance(category, str):
+     56 |             raise ValueError(f"category for {word!r}
+     must be a string")
+        |
+     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     57 |         if len(word.split()) != 1:
+     … +4 lines (ctrl+o to expand)
+
+● Ruff flags the type check; I'll raise TypeError there and
+  catch it in rules_arg.
+
+● Bash(sed -i 's/raise ValueError(f"category for/raise
+      TypeError(f"category for/' ledger.py && sed -i 's/except
+      (OSError, tomllib.TOMLDecodeError, ValueError) as e:/ex…)
+  ⎿  4 files left unchanged
+     All checks passed!
+     ...................................
+     … +61 lines (ctrl+o to expand)
+  ⎿  Updated ledger.py (+1 -1)
+      53          rules = tomllib.load(f)
+      54      for word, category in rules.items():
+      55          if not isinstance(category, str):
+      56 -            raise ValueError(f"category for {wo
+         -rd!r} must be a string")
+      56 +            raise TypeError(f"category for {wor
+         +d!r} must be a string")
+      57          if len(word.split()) != 1:
+      58              raise ValueError(f"rule {word!r} mu
+          st be a single word")
+      59      return rules
+  ⎿  Updated tally.py (+1 -1)
+      47      """Load a rules TOML file mapping descripti
+          on words to categories."""
+      48      try:
+      49          return read_rules(Path(value))
+      50 -    except (OSError, tomllib.TOMLDecodeError, V
+         -alueError) as e:
+      50 +    except (OSError, tomllib.TOMLDecodeError, T
+         +ypeError, ValueError) as e:
+      51          raise argparse.ArgumentTypeError(f"inva
+          lid rules file {value!r}: {e}") from None
+      52
+      53
+  ⎿  Allowed by auto mode classifier
+
+● All 35 tests pass. Now the manual check with the sample data:
+
+● Bash(uv run python tally.py bank.csv --rules rules.toml; echo
+      ---; uv run python tally.py bank.csv --month 2026-08
+      --rules rules.toml --top 3; echo ---; uv run pytho…)
+  ⎿  in      6418.90
+     out     3312.10
+     net     3106.80
+     … +23 lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+● August groceries come to 217.60, as expected. Last step is
+  updating CLAUDE.md.
+
+● Bash(python3 - <<'EOF'
+      p = "CLAUDE.md"…)
+  ⎿   CLAUDE.md      |   9 ++--
+      ledger.py      |  34 ++++++++++++
+      tally.py       |  28 +++++++++-
+     … +3 lines (ctrl+o to expand)
+  ⎿  Updated CLAUDE.md (+5 -4)
+       4
+       5  ## Project
+       6
+       7 -`tally` is a small Python CLI (Python ≥3.12, no
+         - runtime dependencies) that summarises a bank C
+         -SV export: money in, money out, net, optionally
+         - filtered to one month and optionally listing t
+         -he largest expenses. Managed with `uv`; dev dep
+         -endencies are pytest and ruff.
+       7 +`tally` is a small Python CLI (Python ≥3.12, no
+         + runtime dependencies) that summarises a bank C
+         +SV export: money in, money out, net, optionally
+         + filtered to one month, optionally listing the
+         +largest expenses, and optionally grouping spend
+         +ing by category. Managed with `uv`; dev depende
+         +ncies are pytest and ruff.
+       8
+       9  ## Before calling a change done
+      10
+     ...
+      24  uv run pytest -k largest_expenses
+           # run tests matching a name
+      25  uv run python tally.py bank.csv
+           # run the CLI against the sample data
+      26  uv run python tally.py bank.csv --month 2026-08
+           --top 3
+      27 +uv run python tally.py bank.csv --rules rules.t
+         +oml
+      28  ```
+      29
+      30  Ruff runs with its default settings (no `[tool.
+          ruff]` section in `pyproject.toml`), so the lin
+          e length is 88. There is no build step.
+     ...
+      33
+      34  Flat layout, two modules, no package:
+      35
+      35 -- `ledger.py` — pure logic. `read_entries` pars
+         -es the CSV (columns `date,description,amount`;
+         -ISO dates; signed amounts where negative = expe
+         -nse) into frozen `Entry` dataclasses. The other
+         - functions (`totals`, `in_month`, `largest_expe
+         -nses`) are pure list transforms over `Entry`s.
+      36 -- `tally.py` — the argparse CLI. `main(argv)` t
+         -akes an explicit argv list and returns an exit
+         -code, which is how tests drive it. Argument val
+         -idation lives in custom `type=` callables (`mon
+         -th_arg`, `count_arg`) that raise `argparse.Argu
+         -mentTypeError`, so bad input exits with code 2.
+      36 +- `ledger.py` — pure logic. `read_entries` pars
+         +es the CSV (columns `date,description,amount`;
+         +ISO dates; signed amounts where negative = expe
+         +nse) into frozen `Entry` dataclasses. The other
+         + functions (`totals`, `in_month`, `largest_expe
+         +nses`) are pure list transforms over `Entry`s.
+         +`read_rules` loads a flat TOML table of `word =
+         + "category"` (stdlib `tomllib`); `by_category`
+         +sums expenses per category, matching whole word
+         +s case-insensitively with the first rule in fil
+         +e order winning, unmatched → `uncategorised`, o
+         +rdered biggest spend first (ties by name).
+      37 +- `tally.py` — the argparse CLI. `main(argv)` t
+         +akes an explicit argv list and returns an exit
+         +code, which is how tests drive it. Argument val
+         +idation lives in custom `type=` callables (`mon
+         +th_arg`, `count_arg`, `rules_arg`) that raise `
+         +argparse.ArgumentTypeError`, so bad input exits
+         + with code 2.
+      38  - `test_ledger.py` — tests for both modules. Ea
+          ch test writes a CSV string to `tmp_path`; CLI
+          tests call `main([...])` and assert on `capsys`
+           output.
+      38 -- `bank.csv` — sample data for manual runs, not
+         - used by tests.
+      39 +- `bank.csv`, `rules.toml` — sample data for ma
+         +nual runs, not used by tests.
+      40
+      41  ## Conventions
+      42
+  ⎿  Allowed by auto mode classifier
+
+● Spending by category is working, with the tests written first.
+  Format, lint and all 35 tests pass (16 of them new), and the
+  CLI gives the right figures on the sample data.
+
+  How it works
+  - Pass --rules PATH to get a spending breakdown by category.
+    Without the flag, output is exactly as before.
+  - rules.toml is a flat list of word = "category" lines, e.g.
+    Market = "groceries".
+  - A word matches only as a whole word, in any case: "Market"
+    matches "Corner MARKET", but "Rent" does not match
+    "Parental".
+  - If a description matches more than one rule, the rule listed
+    first in the file wins.
+  - Only expenses are grouped, so income like "Refund Bookshop"
+    isn't counted. Anything unmatched goes under uncategorised.
+  - Categories are listed biggest spend first, with
+    uncategorised sorted in by its total like the others. Equal
+    totals are ordered alphabetically.
+  - The breakdown is printed after the totals and before the
+    --top list.
+  - A bad rules file exits with code 2, like the other bad
+    options. That covers a missing file, invalid TOML, a
+    category that isn't text, a rule word with a space in it,
+    and a nested section.
+
+  Test-first: I added the tests before any code and confirmed
+  they failed. The new names don't exist yet, so the failure is
+  an import error, which stops the whole test file from running,
+  not just the new tests.
+
+  On the sample data (--month 2026-08 --rules rules.toml):
+  housing                 1450.00
+  groceries                217.60
+  utilities                 96.30
+  transport                 40.00
+  Groceries is 82.40 + 61.15 + 74.05 = 217.60, as expected.
+
+  Changes
+  - ledger.py: added read_rules, categorise and by_category.
+  - tally.py: added the --rules option and the breakdown output.
+  - test_ledger.py: added the new tests.
+  - rules.toml: new sample rules file for trying it by hand.
+  - CLAUDE.md: updated to describe the feature.
+
+  Ruff flagged raising ValueError for a category that isn't
+  text, so read_rules raises TypeError there and the CLI catches
+  both. Nothing is committed yet.
+
+✻ Worked for 1m 47s · done 10:27 AM
+
+───────────────────────────────────────── spending-by-category ─
+❯ commit this
+────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents      /rc
+

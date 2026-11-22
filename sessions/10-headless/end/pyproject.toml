@@ -1,0 +1,14 @@
+[project]
+name = "tally"
+version = "0.1.0"
+description = "Summarise a bank CSV export"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=2.2.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.8",
+]
