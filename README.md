@@ -5,6 +5,9 @@ This repository holds the sample project from the book *First Steps with Claude 
 - `tally/` is the project as the last chapter leaves it: the ledger, its command-line tool, the MCP server, the tests, `CLAUDE.md`, the permission rules, the skill and the subagent. Run `uv sync` and then `uv run pytest` inside it.
 - `sessions/` holds each session in full. `<session>/end/` is the project when the session ended, `diff.patch` is what the session changed, and `screens/` has the uncut terminal captures the book excerpts. Each session starts from the `end/` of the session named in its `from` file, plus any files in its `add/` folder. `sessions/README.md` explains how they were recorded.
 
+- `examples/09-mcp/` is chapter 9's tool-error example: `tool_errors.py` as the book prints it and the `mcp_server_calls.py` helper it imports. Run it from that folder with `uv run --project ../../tally python tool_errors.py`.
+- Chapter 1's `test_ledger.py`, which the book describes rather than prints, is in `sessions/00-start/end/` with the rest of the starting project.
+
 ## Sessions by chapter
 
 - `00-start` — the project you build by hand in chapter 1.
